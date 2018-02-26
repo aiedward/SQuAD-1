@@ -1,5 +1,3 @@
 data/
 experiments/
 .env/
-code/preprocessing/*.pyc
-code/*.pyc
