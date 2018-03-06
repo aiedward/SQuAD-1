@@ -333,7 +333,7 @@ class QAModel(object):
         probs = tf.matrix_band_part(probs, 0, K)  # mask to enforce i<=j<=(i+K)
 
         # get argmax in row/column (i,j) format for each batch
-        indices = np.transpose(np.asarray([np.unravel_index(np.argmax(x, axis=None), x.shape) for x in probs])
+        indices = np.transpose(np.asarray([np.unravel_index(np.argmax(x, axis=None), x.shape) for x in probs]))
         start_pos = indices[0]
         end_pos   = indices[1]
 
