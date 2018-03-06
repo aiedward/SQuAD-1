@@ -289,7 +289,7 @@ class QAModel(object):
         return probdist_start, probdist_end
 
 
-    def get_start_end_pos(self, session, batch):
+    def get_start_end_pos(self, session, batch, K=15):
         """
         Run forward-pass only; get the most likely answer span.
 
@@ -301,29 +301,18 @@ class QAModel(object):
           start_pos, end_pos: both numpy arrays shape (batch_size).
             The most likely start and end positions for each example in the batch.
         """
-        # Get start_dist and end_dist, both shape (batch_size, context_len)
-        start_dist, end_dist = self.get_prob_dists(session, batch)
 
-        # Take argmax to get start_pos and end_post, both shape (batch_size)
-        start_pos = np.argmax(start_dist, axis=1)
-        end_pos = np.argmax(end_dist, axis=1)
+        # ################# ORIGINAL (NAIVE) FORMULATION #################
+        # # Get start_dist and end_dist, both shape (batch_size, context_len)
+        # start_dist, end_dist = self.get_prob_dists(session, batch)
+        # # Take argmax to get start_pos and end_post, both shape (batch_size)
+        # start_pos = np.argmax(start_dist, axis=1)
+        # end_pos = np.argmax(end_dist, axis=1)
 
-        return start_pos, end_pos
+        ################# SMART FORMULATION #################
+        ## From DrQA, choose the start and end location pair (i, j) with i <= j <= i + K 
+        ## that maximizes p_start(i)*p_end(j), K=15 by default
 
-    def get_start_end_pos_smart(self, session, batch, K=15):
-        """
-        Run forward-pass only; get the most likely answer span, using a "smart" rule
-        (not naive argmax). From DrQA, choose the start and end location pair (i, j) 
-        with i <= j <= i + K that maximizes p_start(i)*p_end(j), K=15 by default
-
-        Inputs:
-          session: TensorFlow session
-          batch: Batch object
-
-        Returns:
-          start_pos, end_pos: both numpy arrays shape (batch_size).
-            The most likely start and end positions for each example in the batch.
-        """
         # Get start_dist and end_dist, both shape (batch_size, context_len)
         start_dist, end_dist = self.get_prob_dists(session, batch)
 
