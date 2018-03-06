@@ -83,6 +83,7 @@ class RNNEncoder(object):
             for n in range(self.num_rnn_layers):
                 (fw_out, bw_out), _ = tf.nn.bidirectional_dynamic_rnn(self.rnn_cells_fw[n], self.rnn_cells_bw[n], out, input_lens, dtype=tf.float32, scope="bidirectional_rnn_" + str(n))
                 out = tf.concat([fw_out, bw_out], axis=2)
+		print('ADDED NEW LAYER ' + str(n))
 
             # Apply dropout
             out = tf.nn.dropout(out, self.keep_prob)
