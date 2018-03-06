@@ -310,6 +310,34 @@ class QAModel(object):
 
         return start_pos, end_pos
 
+    def get_start_end_pos_smart(self, session, batch, K=15):
+        """
+        Run forward-pass only; get the most likely answer span, using a "smart" rule
+        (not naive argmax). From DrQA, choose the start and end location pair (i, j) 
+        with i <= j <= i + K that maximizes p_start(i)*p_end(j), K=15 by default
+
+        Inputs:
+          session: TensorFlow session
+          batch: Batch object
+
+        Returns:
+          start_pos, end_pos: both numpy arrays shape (batch_size).
+            The most likely start and end positions for each example in the batch.
+        """
+        # Get start_dist and end_dist, both shape (batch_size, context_len)
+        start_dist, end_dist = self.get_prob_dists(session, batch)
+
+        start_dist = tf.expand_dims(start_dist,2) # (b,N,1)
+        end_dist   = tf.expand_dims(end_dist,1)   # (b,1,N)
+        probs = tf.matmul(start_dist, end_dist)   # (b,N,N)
+        probs = tf.matrix_band_part(probs, 0, K)  # mask to enforce i<=j<=(i+K)
+
+        # get argmax in row/column (i,j) format for each batch
+        indices = np.transpose(np.asarray([np.unravel_index(np.argmax(x, axis=None), x.shape) for x in probs])
+        start_pos = indices[0]
+        end_pos   = indices[1]
+
+        return start_pos, end_pos
 
     def get_dev_loss(self, session, dev_context_path, dev_qn_path, dev_ans_path):
         """
@@ -388,7 +416,7 @@ class QAModel(object):
         # That means we're truncating, rather than discarding, examples with too-long context or questions
         for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False):
 
-            pred_start_pos, pred_end_pos = self.get_start_end_pos(session, batch)
+            pred_start_pos, pred_end_pos = self.get_start_end_pos_smart(session, batch)
 
             # Convert the start and end positions to lists length batch_size
             pred_start_pos = pred_start_pos.tolist() # list length batch_size

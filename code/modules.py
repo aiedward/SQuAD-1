@@ -215,7 +215,7 @@ class BidirecAttn(object):
             S1 = tf.tensordot(c, w_bd1_aug, axes=[[2],[0]]) # (b, N, 1) = (b,N,2h)x(2h,1); (can use add broadcasting later)
 
             w_bd2_aug = tf.expand_dims(w_bd2,0)             # (1, 2h)
-            S2 = tf.tensordot(w_bd2_aug, q, axes=[[1],[2]]) # (1, b, M)
+            S2 = tf.tensordot(w_bd2_aug, q, axes=[[1],[2]]) # (1, b, M) = (1,2h)x(b,M,2h)
             S2 = tf.transpose(S2, perm=[1,0,2])             # (b, 1, M); (can use add broadcasting later)
 
             w_bd3_aug = tf.expand_dims(tf.expand_dims(w_bd3,0),0)  # (1, 1, 2h)
@@ -234,7 +234,7 @@ class BidirecAttn(object):
             m = tf.reduce_max(S, axis=2)               # (b, N)
             beta,_ = masked_softmax(m, c_mask, dim=1)  # (b, N)
             beta   = tf.expand_dims(beta, axis=2)      # (b, N, 1)
-            cprime = beta * c               # (b, N, 2h) = (b,N,1)x(b,N,2h)
+            cprime = beta * c                          # (b, N, 2h) = (b,N,1)x(b,N,2h)
             cprime = tf.reduce_sum(cprime, axis=1)     # (b, 2h)
             cprime = tf.expand_dims(cprime, axis=1)    # (b, 1, 2h)
             cprime = tf.nn.dropout(cprime, self.keep_prob)
