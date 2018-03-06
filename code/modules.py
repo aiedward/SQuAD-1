@@ -175,6 +175,73 @@ class BasicAttn(object):
 
             return attn_dist, output
 
+class BidirecAttn(object):
+    """Module for bidirectional attention.
+        Implementation described in original BiDAF paper (Seo et al)
+    """
+
+    def __init__(self, keep_prob, hidden_size):
+        """
+        Inputs:
+          keep_prob: tensor containing a single scalar that is the keep probability (for dropout)
+          hidden_size: size of hidden layer. int
+        """
+        self.keep_prob   = keep_prob
+        self.hidden_size = hidden_size
+
+    def build_graph(self, c, c_mask, q, q_mask):
+        """
+        Inputs:
+          c:        context embeddings,  Tensor shape (batch_size, N, 2h).
+          q:        question embeddings, Tensor shape (batch_size, M, 2h)
+          c_mask:   context mask,  Tensor shape (batch_size, N).
+          q_mask:   question mask, Tensor shape (batch_size, M).
+
+        Outputs:.
+          output: Tensor shape (batch_size, num_context, hidden_size*8).
+            This is the concatentation of context hidden state, C2Q attention output, and Q2C attention output.
+        """
+        with vs.variable_scope("BidirecAttn"):
+
+            N = tf.shape(c)[1] # num_context
+            M = tf.shape(q)[1] # num_question
+
+            ## Compute similarity matrix
+            w_bd1 = tf.get_variable("w_bd1", shape=(self.hidden_size*2), initializer=tf.contrib.layers.xavier_initializer()) # (2h)
+            w_bd2 = tf.get_variable("w_bd2", shape=(self.hidden_size*2), initializer=tf.contrib.layers.xavier_initializer()) # (2h)
+            w_bd3 = tf.get_variable("w_bd3", shape=(self.hidden_size*2), initializer=tf.contrib.layers.xavier_initializer()) # (2h)
+            
+            w_bd1_aug = tf.expand_dims(w_bd1,1)             # (2h, 1)
+            S1 = tf.tensordot(c, w_bd1_aug, axes=[[2],[0]]) # (b, N, 1) = (b,N,2h)x(2h,1); (can use add broadcasting later)
+
+            w_bd2_aug = tf.expand_dims(w_bd2,0)             # (1, 2h)
+            S2 = tf.tensordot(w_bd2_aug, q, axes=[[1],[2]]) # (1, b, M)
+            S2 = tf.transpose(S2, perm=[1,0,2])             # (b, 1, M); (can use add broadcasting later)
+
+            w_bd3_aug = tf.expand_dims(tf.expand_dims(w_bd3,0),0)  # (1, 1, 2h)
+            w3_c = w_bd3_aug * c                                 # (b, N, 2h) with broadcasting
+            S3 = tf.matmul(w3_c, tf.transpose(q,perm=[0,2,1]))   # (b, N, M)
+
+            S = S1+S2+S3 # (b, N, M)
+
+            ## Compute C2Q attention
+            alpha,_ = masked_softmax(S, tf.expand_dims(q_mask,1), dim=2)  # take row-wise softmax of S; (b, N, M)
+            a = tf.expand_dims(alpha,3) * tf.expand_dims(q,1) # (b, N, M, 2h) = (b,N,M,1)*(n,1,M,2H)
+            a = tf.reduce_sum(a, axis=2) # (b,N,2h)
+            a = tf.nn.dropout(a, self.keep_prob)
+
+            ## Compute Q2C attention
+            m = tf.reduce_max(S, axis=2)               # (b, N)
+            beta,_ = masked_softmax(m, c_mask, dim=1)  # (b, N)
+            beta   = tf.expand_dims(beta, axis=2)      # (b, N, 1)
+            cprime = beta * c               # (b, N, 2h) = (b,N,1)x(b,N,2h)
+            cprime = tf.reduce_sum(cprime, axis=1)     # (b, 2h)
+            cprime = tf.expand_dims(cprime, axis=1)    # (b, 1, 2h)
+            cprime = tf.nn.dropout(cprime, self.keep_prob)
+
+            # form final output
+            output = tf.concat([c, a, c*a, c*cprime], axis=2) # (b, N, 8h)
+            return output
 
 def masked_softmax(logits, mask, dim):
     """
