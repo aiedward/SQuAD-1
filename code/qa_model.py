@@ -316,10 +316,11 @@ class QAModel(object):
         # Get start_dist and end_dist, both shape (batch_size, context_len)
         start_dist, end_dist = self.get_prob_dists(session, batch)
 
-        start_dist = tf.expand_dims(start_dist,2) # (b,N,1)
-        end_dist   = tf.expand_dims(end_dist,1)   # (b,1,N)
-        probs = tf.matmul(start_dist, end_dist)   # (b,N,N)
-        probs = tf.matrix_band_part(probs, 0, K)  # mask to enforce i<=j<=(i+K)
+        start_dist = np.expand_dims(start_dist,2) # (b,N,1)
+        end_dist   = np.expand_dims(end_dist,1)   # (b,1,N)
+        probs = np.matmul(start_dist, end_dist)   # (b,N,N)
+        probs = np.triu(probs)      # mask out bottom diagonal to enforce i<=j
+        probs = np.tril(probs, K)   # mask out upper  diagonal (above K) to enforce j<=(i+K)
 
         # get argmax in row/column (i,j) format for each batch
         indices = np.transpose(np.asarray([np.unravel_index(np.argmax(x, axis=None), x.shape) for x in probs]))
