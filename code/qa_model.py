@@ -130,7 +130,7 @@ class QAModel(object):
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
-        encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
+        encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers)
         context_hiddens = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
         question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
@@ -303,29 +303,29 @@ class QAModel(object):
         """
 
         # ################# ORIGINAL (NAIVE) FORMULATION #################
-        # # Get start_dist and end_dist, both shape (batch_size, context_len)
-        # start_dist, end_dist = self.get_prob_dists(session, batch)
-        # # Take argmax to get start_pos and end_post, both shape (batch_size)
-        # start_pos = np.argmax(start_dist, axis=1)
-        # end_pos = np.argmax(end_dist, axis=1)
+        # Get start_dist and end_dist, both shape (batch_size, context_len)
+        start_dist, end_dist = self.get_prob_dists(session, batch)
+        # Take argmax to get start_pos and end_post, both shape (batch_size)
+        start_pos = np.argmax(start_dist, axis=1)
+        end_pos = np.argmax(end_dist, axis=1)
 
         ################# SMART FORMULATION #################
         ## From DrQA, choose the start and end location pair (i, j) with i <= j <= i + K 
         ## that maximizes p_start(i)*p_end(j), K=15 by default
 
-        # Get start_dist and end_dist, both shape (batch_size, context_len)
-        start_dist, end_dist = self.get_prob_dists(session, batch)
+        # # Get start_dist and end_dist, both shape (batch_size, context_len)
+        # start_dist, end_dist = self.get_prob_dists(session, batch)
 
-        start_dist = np.expand_dims(start_dist,2) # (b,N,1)
-        end_dist   = np.expand_dims(end_dist,1)   # (b,1,N)
-        probs = np.matmul(start_dist, end_dist)   # (b,N,N)
-        probs = np.triu(probs)      # mask out bottom diagonal to enforce i<=j
-        probs = np.tril(probs, K)   # mask out upper  diagonal (above K) to enforce j<=(i+K)
+        # start_dist = np.expand_dims(start_dist,2) # (b,N,1)
+        # end_dist   = np.expand_dims(end_dist,1)   # (b,1,N)
+        # probs = np.matmul(start_dist, end_dist)   # (b,N,N)
+        # probs = np.triu(probs)      # mask out bottom diagonal to enforce i<=j
+        # probs = np.tril(probs, K)   # mask out upper  diagonal (above K) to enforce j<=(i+K)
 
-        # get argmax in row/column (i,j) format for each batch
-        indices = np.transpose(np.asarray([np.unravel_index(np.argmax(x, axis=None), x.shape) for x in probs]))
-        start_pos = indices[0]
-        end_pos   = indices[1]
+        # # get argmax in row/column (i,j) format for each batch
+        # indices = np.transpose(np.asarray([np.unravel_index(np.argmax(x, axis=None), x.shape) for x in probs]))
+        # start_pos = indices[0]
+        # end_pos   = indices[1]
 
         return start_pos, end_pos
 

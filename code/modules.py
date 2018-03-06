@@ -36,7 +36,7 @@ class RNNEncoder(object):
     This code uses a bidirectional GRU, but you could experiment with other types of RNN.
     """
 
-    def __init__(self, hidden_size, keep_prob):
+    def __init__(self, hidden_size, keep_prob, num_rnn_layers):
         """
         Inputs:
           hidden_size: int. Hidden size of the RNN
@@ -44,10 +44,17 @@ class RNNEncoder(object):
         """
         self.hidden_size = hidden_size
         self.keep_prob = keep_prob
-        self.rnn_cell_fw = rnn_cell.GRUCell(self.hidden_size)
-        self.rnn_cell_fw = DropoutWrapper(self.rnn_cell_fw, input_keep_prob=self.keep_prob)
-        self.rnn_cell_bw = rnn_cell.GRUCell(self.hidden_size)
-        self.rnn_cell_bw = DropoutWrapper(self.rnn_cell_bw, input_keep_prob=self.keep_prob)
+
+        # ## Basic one layer RNN implementaiton
+        # self.rnn_cell_fw = rnn_cell.GRUCell(self.hidden_size)
+        # self.rnn_cell_fw = DropoutWrapper(self.rnn_cell_fw, input_keep_prob=self.keep_prob)
+        # self.rnn_cell_bw = rnn_cell.GRUCell(self.hidden_size)
+        # self.rnn_cell_bw = DropoutWrapper(self.rnn_cell_bw, input_keep_prob=self.keep_prob)
+
+        ## Stacked layer RNN implementaiton
+        self.num_rnn_layers = num_rnn_layers
+        self.rnn_cells_fw = [DropoutWrapper(rnn_cell.GRUCell(self.hidden_size), input_keep_prob=self.keep_prob) for _ in range(num_rnn_layers)]
+        self.rnn_cells_bw = [DropoutWrapper(rnn_cell.GRUCell(self.hidden_size), input_keep_prob=self.keep_prob) for _ in range(num_rnn_layers)]
 
     def build_graph(self, inputs, masks):
         """
@@ -64,12 +71,18 @@ class RNNEncoder(object):
         with vs.variable_scope("RNNEncoder"):
             input_lens = tf.reduce_sum(masks, reduction_indices=1) # shape (batch_size)
 
-            # Note: fw_out and bw_out are the hidden states for every timestep.
-            # Each is shape (batch_size, seq_len, hidden_size).
-            (fw_out, bw_out), _ = tf.nn.bidirectional_dynamic_rnn(self.rnn_cell_fw, self.rnn_cell_bw, inputs, input_lens, dtype=tf.float32)
+            # ## Using basic one-layer bidirectional RNN
+            # # Note: fw_out and bw_out are the hidden states for every timestep.
+            # # Each is shape (batch_size, seq_len, hidden_size).
+            # (fw_out, bw_out), _ = tf.nn.bidirectional_dynamic_rnn(self.rnn_cell_fw, self.rnn_cell_bw, inputs, input_lens, dtype=tf.float32)
+            # # Concatenate the forward and backward hidden states
+            # out = tf.concat([fw_out, bw_out], 2)
 
-            # Concatenate the forward and backward hidden states
-            out = tf.concat([fw_out, bw_out], 2)
+            ## Multi-layer bidirectional RNN
+            out = inputs
+            for n in range(self.num_rnn_layers):
+                (fw_out, bw_out), _ = tf.nn.bidirectional_dynamic_rnn(self.rnn_cells_fw[n], self.rnn_cells_bw[n], out, input_lens, dtype=tf.float32, scope="bidirectional_rnn_" + str(n))
+                out = tf.concat([fw_out, bw_out], axis=2)
 
             # Apply dropout
             out = tf.nn.dropout(out, self.keep_prob)

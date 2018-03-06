@@ -1,0 +1,4 @@
+basline (trained, "baseline"): submitted
+bidaf   (trained, "bidaf")
+bidaf + smart get_start(K=15) : submitted
+stacked bidaf (n=4) + smart get_start(K=15)
