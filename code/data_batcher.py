@@ -26,6 +26,9 @@ import numpy as np
 from six.moves import xrange
 from vocab import PAD_ID, UNK_ID
 
+# from nltk import pos_tag, ne_chunk
+# from nltk.chunk import tree2conlltags
+from pycorenlp import StanfordCoreNLP
 
 class Batch(object):
     """A class to hold the information needed for a training batch"""
@@ -111,12 +114,48 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
     examples = [] # list of (qn_ids, context_ids, ans_span, ans_tokens) triples
     context_line, qn_line, ans_line = context_file.readline(), qn_file.readline(), ans_file.readline() # read the next line from each
 
+    ##################################################### 
+    print "Connecting to CoreNLP server..."    
+    nlp = StanfordCoreNLP('http://localhost:9000')
+    print "Connected!"    
+    ##################################################### 
+
     while context_line and qn_line and ans_line: # while you haven't reached the end
 
         # Convert tokens to word ids
         context_tokens, context_ids = sentence_to_token_ids(context_line, word2id)
         qn_tokens, qn_ids = sentence_to_token_ids(qn_line, word2id)
         ans_span = intstr_to_intlist(ans_line)
+
+        ########### GENERATE EXACT MATCH + POS/NER FEATURES ###########
+        pos2int = {"CC":0, "CD":1, "DT":2, "EX":3, "FW":4, "IN":5, "JJ":6, "JJR":7, "JJS":8, \
+            "LS":9, "MD":10, "NN":11, "NNS":12, "NNP":13, "NNPS":14, "PDT":15, "POS":16, \
+            "PRP":17, "PRP$":18, "RB":19, "RBR":20, "RBS":21, "RP":22, "SYM":23, "TO":24, \
+            "UH":25, "VB":26, "VBD":27, "VBG":28, "VBN":29, "VBP":30, "VBZ":31, "WDT":32, \
+            "WP":33, "WP$":34, "WRB":35}
+
+        ner2int = {"O":0, "PERSON":1, "LOCATION":2, "ORGANIZATION":3, "MISC":4, "MONEY":5, \
+                   "NUMBER":6, "ORDINAL":7, "PERCENT":8, "DATE":9, "TIME":10, "DURATION":11, "SET":12, \
+                   "EMAIL":13, "URL":14, "CITY":15, "STATE_OR_PROVINCE":16, "COUNTRY":17, "NATIONALITY":18, \
+                   "RELIGION":19, "TITLE":20, "IDEOLOGY":21, "CRIMINAL_CHARGE":22, "CAUSE_OF_DEATH":23}
+
+        output = nlp.annotate(context_line, properties={
+            'annotators': 'pos,ner,lemma',
+            'tokenize.language': 'Whitespace',
+            'outputFormat': 'json'})
+        ner_tags = np.array([ner2int[str(tok['ner'])] if str(tok['ner']) in ner2int.keys() else 0 for s in output['sentences'] for tok in s['tokens']])
+        pos_tags = np.array([pos2int[str(tok['pos'])] if str(tok['pos']) in pos2int.keys() else -1 for s in output['sentences'] for tok in s['tokens']])
+        lems     = [tok['lemma'] for s in output['sentences'] for tok in s['tokens']]
+        assert (len(ner_tags)==len(context_tokens)), "%d, %d" % (len(ner_tags), len(context_tokens))
+        assert (len(pos_tags)==len(context_tokens)), "%d, %d" % (len(pos_tags), len(context_tokens))
+        assert (len(lems)==len(context_tokens)),     "%d, %d" % (len(lems),     len(context_tokens))
+  
+        # compare each context token to query tokens
+        match_orig  = np.array([int(any(context_token==q         for q in qn_tokens)) for context_token in context_tokens]) # original form
+        match_lower = np.array([int(any(context_token.lower()==q for q in qn_tokens)) for context_token in context_tokens]) # lower case
+        match_lemma = np.array([int(any(context_token_lem==q     for q in qn_tokens)) for context_token_lem in lems])      # lemma form
+        feats = np.concatenate([np.expand_dims(x,1) for x in (pos_tags,ner_tags,match_orig,match_lower,match_lemma)],axis=1)  # (N,5)
+        ##################################################### 
 
         # read the next line from each file
         context_line, qn_line, ans_line = context_file.readline(), qn_file.readline(), ans_file.readline()
@@ -143,7 +182,7 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
                 context_ids = context_ids[:context_len]
 
         # add to examples
-        examples.append((context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens))
+        examples.append((context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens, feats))
 
         # stop refilling if you have 160 batches
         if len(examples) == batch_size * 160:
@@ -159,9 +198,9 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
     for batch_start in xrange(0, len(examples), batch_size):
 
         # Note: each of these is a list length batch_size of lists of ints (except on last iter when it might be less than batch_size)
-        context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch = zip(*examples[batch_start:batch_start+batch_size])
+        context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch, feats_batch = zip(*examples[batch_start:batch_start+batch_size])
 
-        batches.append((context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch))
+        batches.append((context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch, feats_batch))
 
     # shuffle the batches
     random.shuffle(batches)
@@ -195,7 +234,7 @@ def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, co
             break
 
         # Get next batch. These are all lists length batch_size
-        (context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens) = batches.pop(0)
+        (context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens, feats) = batches.pop(0)
 
         # Pad context_ids and qn_ids
         qn_ids = padded(qn_ids, question_len) # pad questions to length question_len
@@ -213,7 +252,7 @@ def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, co
         ans_span = np.array(ans_span) # shape (batch_size, 2)
 
         # Make into a Batch object
-        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens)
+        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats)
 
         yield batch
 

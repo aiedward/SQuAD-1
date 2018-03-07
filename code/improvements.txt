@@ -1,4 +1,9 @@
 basline (trained, "baseline"): submitted
 bidaf   (trained, "bidaf")
 bidaf + smart get_start(K=15) : submitted
-stacked bidaf (n=4) + smart get_start(K=15)
+stacked bidaf (n=3) (trained, "stacked")
+added DrQA features (num_feats=5), separate C and Q encoders
+
+
+other things:
+- keep word embeddings fixed, except for 1000 most common question words
