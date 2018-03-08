@@ -309,8 +309,6 @@ class QAModel(object):
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.feats] = batch.feats
-        if type(batch.feats) is not np.ndarray:
-            foo = 0
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.probdist_start, self.probdist_end]
