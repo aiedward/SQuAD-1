@@ -288,7 +288,7 @@ def generate_answers(session, model, word2id, qn_uuid_data, context_token_data, 
     for batch in get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data, model.FLAGS.batch_size, model.FLAGS.context_len, model.FLAGS.question_len, model.FLAGS.num_feats):
 
         # Get the predicted spans
-        pred_start_batch, pred_end_batch = model.get_start_end_pos(session, batch)
+        pred_start_batch, pred_end_batch = model.get_start_end_pos(session, batch, model.FLAGS.max_span)
 
         # Convert pred_start_batch and pred_end_batch to lists length batch_size
         pred_start_batch = pred_start_batch.tolist()

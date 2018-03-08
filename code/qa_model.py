@@ -333,7 +333,7 @@ class QAModel(object):
         return probdist_start, probdist_end
 
 
-    def get_start_end_pos(self, session, batch, K=15):
+    def get_start_end_pos(self, session, batch, K):
         """
         Run forward-pass only; get the most likely answer span.
 
@@ -450,7 +450,7 @@ class QAModel(object):
         # That means we're truncating, rather than discarding, examples with too-long context or questions
         for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False, num_feats=self.FLAGS.num_feats):
 
-            pred_start_pos, pred_end_pos = self.get_start_end_pos(session, batch)
+            pred_start_pos, pred_end_pos = self.get_start_end_pos(session, batch, self.FLAGS.max_span)
 
             # Convert the start and end positions to lists length batch_size
             pred_start_pos = pred_start_pos.tolist() # list length batch_size
