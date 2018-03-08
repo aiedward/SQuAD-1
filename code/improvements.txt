@@ -1,8 +1,8 @@
 basline (trained, "baseline"): submitted
 bidaf   (trained, "bidaf")
-bidaf + smart get_start(K=15) : submitted // {"f1": 52.350024821759746, "exact_match": 44.19753086419753}
-stacked bidaf (n=3) (trained, "stacked") // {"f1": 50.036426171559775, "exact_match": 43.08641975308642}
-added DrQA features (num_feats=4), smart get_start(K=15), one-layer RNN (trained, "feat")
+bidaf + smart get_start(K=15) : submitted // {"f1": 52.350024821759746, "exact_match": 44.19753086419753} (improvements1+2)
+stacked bidaf (n=3) (trained, "stacked") // {"f1": 50.036426171559775, "exact_match": 43.08641975308642} (FIS)
+added DrQA features (num_feats=4), smart get_start(K=15), one-layer RNN (trained, "feat") // {"f1": 65.48; "exact_match": 56.54} (HWG HWG)
 
 
 other things:

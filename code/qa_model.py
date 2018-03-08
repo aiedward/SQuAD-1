@@ -57,8 +57,9 @@ class QAModel(object):
         with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
             self.add_placeholders()
             self.add_embedding_layer(emb_matrix)
+            self.add_aligned_question_embs() ###
             self.add_features() ###
-            self.add_dummy_features() ###
+            #self.add_dummy_features() ###
             self.build_graph()
             self.add_loss()
 
@@ -120,12 +121,28 @@ class QAModel(object):
             self.context_embs = embedding_ops.embedding_lookup(embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
             self.qn_embs = embedding_ops.embedding_lookup(embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size)
 
+    def add_aligned_question_embs(self):
+        """
+        Adds aligned question embeddings to context embeddings, and another dummy row to question embeddings. See DrQA fro details.
+        """        
+        attn_layer   = BasicAttn(self.keep_prob, self.FLAGS.embedding_size, self.FLAGS.embedding_size)
+        attn_dist, _ = attn_layer.build_graph(self.qn_embs, self.qn_mask, self.context_embs) # havent added features to *embs yet
+        
+        # attn_dist    : (batch_size, context_len, question_len)
+        # self.qn_embs : (batch_size, context_len, embedding_size)
+        a = tf.expand_dims(attn_dist,3) * tf.expand_dims(self.qn_embs,1) # (b, N, M, d) = (b,N,M,1)*(b,1,M,d)
+        a = tf.reduce_sum(a, axis=2) # (b,N,d)
+
+        # concatenate aligned question embedding to cotext embeddings
+        self.context_embs = tf.concat((self.context_embs, a), axis=2) # shape (batch_size, context_len, 2*embedding_size)
+        print('Added aligned question_embs!')
+
     def add_features(self):
         """
         Adds word features e.g. (POS,NER,ExactMatch[x3]) to the graph. Must be called after add_embedding_layer
         """     
         with vs.variable_scope("features"):
-            self.context_embs = tf.concat((self.context_embs, self.feats), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
+            self.context_embs = tf.concat((self.context_embs, self.feats), axis=2) # shape (batch_size, context_len, (2*embedding_size)+num_feats)
             print('Added features!')
 
     def add_dummy_features(self):
@@ -151,12 +168,12 @@ class QAModel(object):
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
-        # encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
-        # encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
-        encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoder")
+        encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
+        encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
+        # encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoder")
 
-        context_hiddens  = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
-        question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
+        context_hiddens  = encoderC.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
+        question_hiddens = encoderQ.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
 
         # ################### BASIC ATTENTION ###################

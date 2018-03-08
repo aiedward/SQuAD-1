@@ -241,7 +241,7 @@ class BidirecAttn(object):
 
             ## Compute C2Q attention
             alpha,_ = masked_softmax(S, tf.expand_dims(q_mask,1), dim=2)  # take row-wise softmax of S; (b, N, M)
-            a = tf.expand_dims(alpha,3) * tf.expand_dims(q,1) # (b, N, M, 2h) = (b,N,M,1)*(n,1,M,2H)
+            a = tf.expand_dims(alpha,3) * tf.expand_dims(q,1) # (b, N, M, 2h) = (b,N,M,1)*(b,1,M,2H)
             a = tf.reduce_sum(a, axis=2) # (b,N,2h)
             a = tf.nn.dropout(a, self.keep_prob)
 
