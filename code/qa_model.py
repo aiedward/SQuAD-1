@@ -133,7 +133,8 @@ class QAModel(object):
         Adds dummy word features (all zeros, same size as features) to the graph. Must be called after add_embedding_layer
         """     
         with vs.variable_scope("dummy_features"):
-            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([self.FLAGS.batch_size,self.FLAGS.question_len,self.FLAGS.num_feats],tf.float32)), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
+            actual_batch_size = tf.shape(self.feats)[0] # may not be batch_size if at end of file, for example
+            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size,self.FLAGS.question_len,self.FLAGS.num_feats],tf.float32)), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
             print('Added dummy features!')
 
     def build_graph(self):
