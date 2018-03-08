@@ -100,6 +100,7 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
             qn_ids = qn_ids[:question_len]
         if len(context_ids) > context_len:
             context_ids = context_ids[:context_len]
+            feats = feats[:context_len]
 
         # Add to list of examples
         examples.append((qn_uuid, context_tokens, context_ids, qn_ids, feats))
