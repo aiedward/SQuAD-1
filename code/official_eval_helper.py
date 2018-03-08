@@ -65,6 +65,16 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
     # Get next example
     qn_uuid, context_tokens, qn_tokens = readnext(qn_uuid_data), readnext(context_token_data), readnext(qn_token_data)
 
+    pos2int = {"CC":0, "CD":1, "DT":2, "EX":3, "FW":4, "IN":5, "JJ":6, "JJR":7, "JJS":8, \
+        "LS":9, "MD":10, "NN":11, "NNS":12, "NNP":13, "NNPS":14, "PDT":15, "POS":16, \
+        "PRP":17, "PRP$":18, "RB":19, "RBR":20, "RBS":21, "RP":22, "SYM":23, "TO":24, \
+        "UH":25, "VB":26, "VBD":27, "VBG":28, "VBN":29, "VBP":30, "VBZ":31, "WDT":32, \
+        "WP":33, "WP$":34, "WRB":35}
+    ner2int = {"O":0, "PERSON":1, "LOCATION":2, "ORGANIZATION":3, "GSP":4, "GPE":5, "FACILITY":6}
+    pos_keys = pos2int.keys()
+    ner_keys = ner2int.keys() 
+    lemmatizer = WordNetLemmatizer()
+
     while qn_uuid and context_tokens and qn_tokens:
 
         ########## GENERATE EXACT MATCH + POS/NER FEATURES ###########
