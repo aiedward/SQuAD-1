@@ -1,7 +1,7 @@
 basline (trained, "baseline"): submitted
 bidaf   (trained, "bidaf")
-bidaf + smart get_start(K=15) : submitted
-stacked bidaf (n=3) (trained, "stacked")
+bidaf + smart get_start(K=15) : submitted // {"f1": 52.350024821759746, "exact_match": 44.19753086419753}
+stacked bidaf (n=3) (trained, "stacked") // {"f1": 50.036426171559775, "exact_match": 43.08641975308642}
 added DrQA features (num_feats=5), separate C and Q encoders
 
 

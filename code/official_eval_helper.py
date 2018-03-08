@@ -27,9 +27,12 @@ from nltk.tokenize.moses import MosesDetokenizer
 
 from preprocessing.squad_preprocess import data_from_json, tokenize
 from vocab import UNK_ID, PAD_ID
-from data_batcher import padded, Batch
+from data_batcher import padded, Batch, padded2, get_wordnet_pos
 
-
+from nltk import pos_tag, ne_chunk
+from nltk.chunk import tree2conlltags
+from nltk.stem import WordNetLemmatizer
+from nltk.corpus import wordnet
 
 def readnext(x):
     """x is a list"""
@@ -64,6 +67,29 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
 
     while qn_uuid and context_tokens and qn_tokens:
 
+        ########## GENERATE EXACT MATCH + POS/NER FEATURES ###########
+        # calculate POS and NER tags (as strings)
+        pos_tree = pos_tag(context_tokens)
+        pos_tags = [p[1] for p in pos_tree]
+        # chunk = ne_chunk(pos_tree)
+        # ner_tags = [ne[2][2:] for ne in tree2conlltags(chunk)]
+
+        # convert POS and NER tags to ints using dictionary
+        pos_ids = [pos2int[pos] if pos in pos_keys else -1 for pos in pos_tags]
+        # ner_ids = [ner2int[ne]  if ne  in ner_keys else 0  for ne  in ner_tags]
+
+        # compute lemmatized version of each context token                
+        lems = [str(lemmatizer.lemmatize(tok,get_wordnet_pos(pos))) if get_wordnet_pos(pos) else str(lemmatizer.lemmatize(tok)) for tok,pos in zip(context_tokens,pos_tags)]
+
+        # compare each context word to query words for three different versions
+        match_orig  = [int(any(context_token==q         for q in qn_tokens)) for context_token in context_tokens] # original form
+        match_lower = [int(any(context_token.lower()==q for q in qn_tokens)) for context_token in context_tokens] # lower case
+        match_lemma = [int(any(context_token_lem==q     for q in qn_tokens)) for context_token_lem in lems]    # lemma form
+
+        # feats = zip(*(pos_ids, ner_ids, match_orig, match_lower, match_lemma))  # (N,5)
+        feats = zip(*(pos_ids, match_orig, match_lower, match_lemma))  # (N,4)
+        ##############################################################
+
         # Convert context_tokens and qn_tokens to context_ids and qn_ids
         context_ids = [word2id.get(w, UNK_ID) for w in context_tokens]
         qn_ids = [word2id.get(w, UNK_ID) for w in qn_tokens]
@@ -76,7 +102,7 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
             context_ids = context_ids[:context_len]
 
         # Add to list of examples
-        examples.append((qn_uuid, context_tokens, context_ids, qn_ids))
+        examples.append((qn_uuid, context_tokens, context_ids, qn_ids, feats))
 
         # Stop if you've got a batch
         if len(examples) == batch_size:
@@ -87,9 +113,9 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
 
     # Make into batches
     for batch_start in xrange(0, len(examples), batch_size):
-        uuids_batch, context_tokens_batch, context_ids_batch, qn_ids_batch = zip(*examples[batch_start:batch_start + batch_size])
+        uuids_batch, context_tokens_batch, context_ids_batch, qn_ids_batch, feats_batch = zip(*examples[batch_start:batch_start + batch_size])
 
-        batches.append((uuids_batch, context_tokens_batch, context_ids_batch, qn_ids_batch))
+        batches.append((uuids_batch, context_tokens_batch, context_ids_batch, qn_ids_batch, feats_batch))
 
     return
 
@@ -119,7 +145,7 @@ def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data
             break
 
         # Get next batch. These are all lists length batch_size
-        (uuids, context_tokens, context_ids, qn_ids) = batches.pop(0)
+        (uuids, context_tokens, context_ids, qn_ids, feats) = batches.pop(0)
 
         # Pad context_ids and qn_ids
         qn_ids = padded(qn_ids, question_len) # pad questions to length question_len
@@ -133,8 +159,11 @@ def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data
         context_ids = np.array(context_ids)
         context_mask = (context_ids != PAD_ID).astype(np.int32)
 
+        # Make feats into an np array
+        feats = np.array(padded2(feats, num_feats, context_len))
+
         # Make into a Batch object
-        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens=None, ans_span=None, ans_tokens=None, uuids=uuids)
+        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens=None, ans_span=None, ans_tokens=None, feats=feats, uuids=uuids)
 
         yield batch
 

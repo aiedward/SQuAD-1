@@ -58,6 +58,7 @@ class QAModel(object):
             self.add_placeholders()
             self.add_embedding_layer(emb_matrix)
             self.add_features() ###
+            self.add_dummy_features() ###
             self.build_graph()
             self.add_loss()
 
@@ -121,11 +122,19 @@ class QAModel(object):
 
     def add_features(self):
         """
-        Adds word features (POS,NER,ExactMatch[x3]) to the graph. Must be called after add_embedding_layer
+        Adds word features e.g. (POS,NER,ExactMatch[x3]) to the graph. Must be called after add_embedding_layer
         """     
         with vs.variable_scope("features"):
             self.context_embs = tf.concat((self.context_embs, self.feats), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
             print('Added features!')
+
+    def add_dummy_features(self):
+        """
+        Adds dummy word features (all zeros, same size as features) to the graph. Must be called after add_embedding_layer
+        """     
+        with vs.variable_scope("dummy_features"):
+            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([self.FLAGS.batch_size,self.FLAGS.question_len,self.FLAGS.num_feats],tf.float32)), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
+            print('Added dummy features!')
 
     def build_graph(self):
         """Builds the main part of the graph for the model, starting from the input embeddings to the final distributions for the answer span.
@@ -141,10 +150,12 @@ class QAModel(object):
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
-        encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
-        encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
-        context_hiddens = encoderC.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
-        question_hiddens = encoderQ.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
+        # encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
+        # encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
+        encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoder")
+
+        context_hiddens  = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
+        question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
 
         # ################### BASIC ATTENTION ###################
@@ -270,6 +281,7 @@ class QAModel(object):
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.ans_span] = batch.ans_span
+        input_feed[self.feats] = batch.feats
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.loss]
@@ -295,6 +307,7 @@ class QAModel(object):
         input_feed[self.context_mask] = batch.context_mask
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
+        input_feed[self.feats] = batch.feats
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.probdist_start, self.probdist_end]
@@ -362,7 +375,7 @@ class QAModel(object):
         # which are longer than our context_len or question_len.
         # We need to do this because if, for example, the true answer is cut
         # off the context, then the loss function is undefined.
-        for batch in get_batch_generator(self.word2id, dev_context_path, dev_qn_path, dev_ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=True):
+        for batch in get_batch_generator(self.word2id, dev_context_path, dev_qn_path, dev_ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=True, num_feats=self.FLAGS.num_feats):
 
             # Get loss for this batch
             loss = self.get_loss(session, batch)
@@ -417,7 +430,7 @@ class QAModel(object):
 
         # Note here we select discard_long=False because we want to sample from the entire dataset
         # That means we're truncating, rather than discarding, examples with too-long context or questions
-        for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False):
+        for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False, num_feats=self.FLAGS.num_feats):
 
             pred_start_pos, pred_end_pos = self.get_start_end_pos(session, batch)
 
@@ -500,7 +513,7 @@ class QAModel(object):
             epoch_tic = time.time()
 
             # Loop over batches
-            for batch in get_batch_generator(self.word2id, train_context_path, train_qn_path, train_ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=True):
+            for batch in get_batch_generator(self.word2id, train_context_path, train_qn_path, train_ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=True, num_feats=self.FLAGS.num_feats):
 
                 # Run training iteration
                 iter_tic = time.time()

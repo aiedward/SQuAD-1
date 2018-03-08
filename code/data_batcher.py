@@ -26,14 +26,15 @@ import numpy as np
 from six.moves import xrange
 from vocab import PAD_ID, UNK_ID
 
-# from nltk import pos_tag, ne_chunk
-# from nltk.chunk import tree2conlltags
-from pycorenlp import StanfordCoreNLP
+from nltk import pos_tag, ne_chunk
+from nltk.chunk import tree2conlltags
+from nltk.stem import WordNetLemmatizer
+from nltk.corpus import wordnet
 
 class Batch(object):
     """A class to hold the information needed for a training batch"""
 
-    def __init__(self, context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, uuids=None):
+    def __init__(self, context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats, uuids=None):
         """
         Inputs:
           {context/qn}_ids: Numpy arrays.
@@ -60,6 +61,20 @@ class Batch(object):
 
         self.batch_size = len(self.context_tokens)
 
+        self.feats = feats
+
+def get_wordnet_pos(treebank_tag):
+
+    if treebank_tag.startswith('J'):
+        return wordnet.ADJ
+    elif treebank_tag.startswith('V'):
+        return wordnet.VERB
+    elif treebank_tag.startswith('N'):
+        return wordnet.NOUN
+    elif treebank_tag.startswith('R'):
+        return wordnet.ADV
+    else:
+        return ''
 
 def split_by_whitespace(sentence):
     words = []
@@ -95,6 +110,10 @@ def padded(token_batch, batch_pad=0):
     maxlen = max(map(lambda x: len(x), token_batch)) if batch_pad == 0 else batch_pad
     return map(lambda token_list: token_list + [PAD_ID] * (maxlen - len(token_list)), token_batch)
 
+def padded2(token_batch, num_feats, batch_pad=0):
+    maxlen = max(map(lambda x: len(x), token_batch)) if batch_pad == 0 else batch_pad
+    return map(lambda token_list: token_list + [num_feats*(PAD_ID,)] * (maxlen - len(token_list)) , token_batch)
+
 
 def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, discard_long):
     """
@@ -114,11 +133,16 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
     examples = [] # list of (qn_ids, context_ids, ans_span, ans_tokens) triples
     context_line, qn_line, ans_line = context_file.readline(), qn_file.readline(), ans_file.readline() # read the next line from each
 
-    ##################################################### 
-    print "Connecting to CoreNLP server..."    
-    nlp = StanfordCoreNLP('http://localhost:9000')
-    print "Connected!"    
-    ##################################################### 
+
+    pos2int = {"CC":0, "CD":1, "DT":2, "EX":3, "FW":4, "IN":5, "JJ":6, "JJR":7, "JJS":8, \
+        "LS":9, "MD":10, "NN":11, "NNS":12, "NNP":13, "NNPS":14, "PDT":15, "POS":16, \
+        "PRP":17, "PRP$":18, "RB":19, "RBR":20, "RBS":21, "RP":22, "SYM":23, "TO":24, \
+        "UH":25, "VB":26, "VBD":27, "VBG":28, "VBN":29, "VBP":30, "VBZ":31, "WDT":32, \
+        "WP":33, "WP$":34, "WRB":35}
+    ner2int = {"O":0, "PERSON":1, "LOCATION":2, "ORGANIZATION":3, "GSP":4, "GPE":5, "FACILITY":6}
+    pos_keys = pos2int.keys()
+    ner_keys = ner2int.keys() 
+    lemmatizer = WordNetLemmatizer()
 
     while context_line and qn_line and ans_line: # while you haven't reached the end
 
@@ -127,35 +151,28 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
         qn_tokens, qn_ids = sentence_to_token_ids(qn_line, word2id)
         ans_span = intstr_to_intlist(ans_line)
 
-        ########### GENERATE EXACT MATCH + POS/NER FEATURES ###########
-        pos2int = {"CC":0, "CD":1, "DT":2, "EX":3, "FW":4, "IN":5, "JJ":6, "JJR":7, "JJS":8, \
-            "LS":9, "MD":10, "NN":11, "NNS":12, "NNP":13, "NNPS":14, "PDT":15, "POS":16, \
-            "PRP":17, "PRP$":18, "RB":19, "RBR":20, "RBS":21, "RP":22, "SYM":23, "TO":24, \
-            "UH":25, "VB":26, "VBD":27, "VBG":28, "VBN":29, "VBP":30, "VBZ":31, "WDT":32, \
-            "WP":33, "WP$":34, "WRB":35}
+        ########## GENERATE EXACT MATCH + POS/NER FEATURES ###########
+        # calculate POS and NER tags (as strings)
+        pos_tree = pos_tag(context_tokens)
+        pos_tags = [p[1] for p in pos_tree]
+        # chunk = ne_chunk(pos_tree)
+        # ner_tags = [ne[2][2:] for ne in tree2conlltags(chunk)]
 
-        ner2int = {"O":0, "PERSON":1, "LOCATION":2, "ORGANIZATION":3, "MISC":4, "MONEY":5, \
-                   "NUMBER":6, "ORDINAL":7, "PERCENT":8, "DATE":9, "TIME":10, "DURATION":11, "SET":12, \
-                   "EMAIL":13, "URL":14, "CITY":15, "STATE_OR_PROVINCE":16, "COUNTRY":17, "NATIONALITY":18, \
-                   "RELIGION":19, "TITLE":20, "IDEOLOGY":21, "CRIMINAL_CHARGE":22, "CAUSE_OF_DEATH":23}
+        # convert POS and NER tags to ints using dictionary
+        pos_ids = [pos2int[pos] if pos in pos_keys else -1 for pos in pos_tags]
+        # ner_ids = [ner2int[ne]  if ne  in ner_keys else 0  for ne  in ner_tags]
 
-        output = nlp.annotate(context_line, properties={
-            'annotators': 'pos,ner,lemma',
-            'tokenize.language': 'Whitespace',
-            'outputFormat': 'json'})
-        ner_tags = np.array([ner2int[str(tok['ner'])] if str(tok['ner']) in ner2int.keys() else 0 for s in output['sentences'] for tok in s['tokens']])
-        pos_tags = np.array([pos2int[str(tok['pos'])] if str(tok['pos']) in pos2int.keys() else -1 for s in output['sentences'] for tok in s['tokens']])
-        lems     = [tok['lemma'] for s in output['sentences'] for tok in s['tokens']]
-        assert (len(ner_tags)==len(context_tokens)), "%d, %d" % (len(ner_tags), len(context_tokens))
-        assert (len(pos_tags)==len(context_tokens)), "%d, %d" % (len(pos_tags), len(context_tokens))
-        assert (len(lems)==len(context_tokens)),     "%d, %d" % (len(lems),     len(context_tokens))
-  
-        # compare each context token to query tokens
-        match_orig  = np.array([int(any(context_token==q         for q in qn_tokens)) for context_token in context_tokens]) # original form
-        match_lower = np.array([int(any(context_token.lower()==q for q in qn_tokens)) for context_token in context_tokens]) # lower case
-        match_lemma = np.array([int(any(context_token_lem==q     for q in qn_tokens)) for context_token_lem in lems])      # lemma form
-        feats = np.concatenate([np.expand_dims(x,1) for x in (pos_tags,ner_tags,match_orig,match_lower,match_lemma)],axis=1)  # (N,5)
-        ##################################################### 
+        # compute lemmatized version of each context token                
+        lems = [str(lemmatizer.lemmatize(tok,get_wordnet_pos(pos))) if get_wordnet_pos(pos) else str(lemmatizer.lemmatize(tok)) for tok,pos in zip(context_tokens,pos_tags)]
+
+        # compare each context word to query words for three different versions
+        match_orig  = [int(any(context_token==q         for q in qn_tokens)) for context_token in context_tokens] # original form
+        match_lower = [int(any(context_token.lower()==q for q in qn_tokens)) for context_token in context_tokens] # lower case
+        match_lemma = [int(any(context_token_lem==q     for q in qn_tokens)) for context_token_lem in lems]    # lemma form
+
+        # feats = zip(*(pos_ids, ner_ids, match_orig, match_lower, match_lemma))  # (N,5)
+        feats = zip(*(pos_ids, match_orig, match_lower, match_lemma))  # (N,4)
+        ##############################################################
 
         # read the next line from each file
         context_line, qn_line, ans_line = context_file.readline(), qn_file.readline(), ans_file.readline()
@@ -210,7 +227,7 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
     return
 
 
-def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, context_len, question_len, discard_long):
+def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, context_len, question_len, discard_long, num_feats):
     """
     This function returns a generator object that yields batches.
     The last batch in the dataset will be a partial batch.
@@ -250,6 +267,9 @@ def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, co
 
         # Make ans_span into a np array
         ans_span = np.array(ans_span) # shape (batch_size, 2)
+
+        # Make feats into an np array
+        feats = np.array(padded2(feats, num_feats, context_len))
 
         # Make into a Batch object
         batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats)
