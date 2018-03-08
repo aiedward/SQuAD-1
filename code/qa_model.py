@@ -59,7 +59,7 @@ class QAModel(object):
             self.add_embedding_layer(emb_matrix)
             self.add_aligned_question_embs() ###
             self.add_features() ###
-            #self.add_dummy_features() ###
+            self.add_dummy_features() ###
             self.build_graph()
             self.add_loss()
 
@@ -151,7 +151,7 @@ class QAModel(object):
         """     
         with vs.variable_scope("dummy_features"):
             actual_batch_size = tf.shape(self.feats)[0] # may not be batch_size if at end of file, for example
-            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size,self.FLAGS.question_len,self.FLAGS.num_feats],tf.float32)), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
+            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size,self.FLAGS.question_len,self.FLAGS.embedding_size+self.FLAGS.num_feats],tf.float32)), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
             print('Added dummy features!')
 
     def build_graph(self):
@@ -168,12 +168,12 @@ class QAModel(object):
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
-        encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
-        encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
-        # encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoder")
+        # encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
+        # encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
+        encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoder")
 
-        context_hiddens  = encoderC.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
-        question_hiddens = encoderQ.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
+        context_hiddens  = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
+        question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
 
         # ################### BASIC ATTENTION ###################
@@ -190,10 +190,12 @@ class QAModel(object):
         # blended_reps_final = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
         # #######################################################
 
+        #######################################################
         # Use context AND question hidden states to calculate bidirectional attention
         bidaf_layer  = BidirecAttn(self.keep_prob, self.FLAGS.hidden_size)
         bidaf_output = bidaf_layer.build_graph(c=context_hiddens, c_mask=self.context_mask, q=question_hiddens, q_mask=self.qn_mask) # attn_output is shape (batch_size, context_len, hidden_size*8)
         blended_reps_final = tf.contrib.layers.fully_connected(bidaf_output, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
+        #######################################################
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
