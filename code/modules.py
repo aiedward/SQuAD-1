@@ -91,7 +91,6 @@ class RNNEncoder(object):
 
             return out
 
-
 class SimpleSoftmaxLayer(object):
     """
     Module to take set of hidden states, (e.g. one for each context location),
@@ -257,6 +256,73 @@ class BidirecAttn(object):
             # form final output
             output = tf.concat([c, a, c*a, c*cprime], axis=2) # (b, N, 8h)
             return output
+
+class SelfAttn(object):
+    """
+        Module for self-attention layer. Implementation described in R-Net.
+    """
+
+    def __init__(self, keep_prob, hidden_size):
+        """
+        Inputs:
+          keep_prob: tensor containing a single scalar that is the keep probability (for dropout)
+          hidden_size: size of hidden layer. int
+        """
+        self.keep_prob   = keep_prob
+        self.hidden_size = hidden_size
+
+    def build_graph(self, c, c_mask, l):
+        """
+        Inputs:
+          c:        context embeddings,  Tensor shape (batch_size, N, l).
+          c_mask:   context mask,  Tensor shape (batch_size, N).
+          l:        length of each context representation
+
+        Outputs:.
+          output: Tensor shape ().
+        """
+        with vs.variable_scope("SelfAttn"):
+
+            v  = tf.get_variable("v",  shape=(self.hidden_size),    initializer=tf.contrib.layers.xavier_initializer()) # (h)
+            W1 = tf.get_variable("W1", shape=(self.hidden_size, l), initializer=tf.contrib.layers.xavier_initializer()) # (h,l)
+            W2 = tf.get_variable("W2", shape=(self.hidden_size, l), initializer=tf.contrib.layers.xavier_initializer()) # (h,l)
+            
+            Q1 = tf.tensordot(c, W1, axes=[[2],[1]]) # (b, N, h) = (b,N,l)x(h,l)
+            Q2 = tf.tensordot(c, W2, axes=[[2],[1]]) # (b, N, h) = (b,N,l)x(h,l)
+
+            Q1 = tf.expand_dims(Q1,1) # (b, 1, N, h) 
+            Q2 = tf.expand_dims(Q2,2) # (b, N, 1, h) 
+
+            Q = tf.tanh(Q1 + Q2) # (b, N, N, h)
+            e = tf.tensordot(Q, v, axes=[[3],[0]]) # (b, N, N)
+            alpha,_ = masked_softmax(e, tf.expand_dims(c_mask,1), dim=2)  # take row-wise softmax of e; (b, N, N)
+
+            print('~~~~~~~')
+            print(c.get_shape())
+            print(v.get_shape())
+            print(W1.get_shape())
+            print(W2.get_shape())
+            print(Q1.get_shape())
+            print(Q2.get_shape())
+            print(Q.get_shape())
+            print(e.get_shape())
+            print(alpha.get_shape())
+            print('~~~~~~~')
+            alpha = tf.expand_dims(alpha,3) # (b, M, N, 1) # note, M=N, denote M for clarity
+            a = alpha*tf.expand_dims(c,1)   # (b, M, N, l) # note, M=N, denote M for clarity
+            a = tf.reduce_sum(a,axis=2)  # (b, M, l)    # note, M=N, denote M for clarity
+
+            rnn_input = tf.concat([c,a],axis=2) # (b,N,2*l)
+
+            input_lens = tf.reduce_sum(c_mask, reduction_indices=1) # shape (batch_size)
+            self.rnn_cell_fw = DropoutWrapper(rnn_cell.GRUCell(self.hidden_size), input_keep_prob=self.keep_prob)
+            self.rnn_cell_bw = DropoutWrapper(rnn_cell.GRUCell(self.hidden_size), input_keep_prob=self.keep_prob)
+            
+            # Each is shape (batch_size, seq_len, hidden_size).
+            (fw_out, bw_out), _ = tf.nn.bidirectional_dynamic_rnn(self.rnn_cell_fw, self.rnn_cell_bw, rnn_input, input_lens, dtype=tf.float32)
+            out = tf.concat([fw_out, bw_out], 2) # (b,N,2*h)
+            out = tf.nn.dropout(out, self.keep_prob)
+            return out
 
 def masked_softmax(logits, mask, dim):
     """

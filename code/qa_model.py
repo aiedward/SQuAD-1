@@ -30,7 +30,7 @@ from tensorflow.python.ops import embedding_ops
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
-from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BidirecAttn
+from modules import RNNEncoder, SimpleSoftmaxLayer, BasicAttn, BidirecAttn, SelfAttn
 
 logging.basicConfig(level=logging.INFO)
 
@@ -175,7 +175,6 @@ class QAModel(object):
         context_hiddens  = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
         question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
-
         # ################### BASIC ATTENTION ###################
         # # Use context hidden states to attend to question hidden states
         # attn_layer = BasicAttn(self.keep_prob, self.FLAGS.hidden_size*2, self.FLAGS.hidden_size*2)
@@ -194,7 +193,13 @@ class QAModel(object):
         # Use context AND question hidden states to calculate bidirectional attention
         bidaf_layer  = BidirecAttn(self.keep_prob, self.FLAGS.hidden_size)
         bidaf_output = bidaf_layer.build_graph(c=context_hiddens, c_mask=self.context_mask, q=question_hiddens, q_mask=self.qn_mask) # attn_output is shape (batch_size, context_len, hidden_size*8)
-        blended_reps_final = tf.contrib.layers.fully_connected(bidaf_output, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
+        
+        ## self-attention
+        selfattn_layer  = SelfAttn(self.keep_prob, self.FLAGS.hidden_size)
+        selfattn_output = selfattn_layer.build_graph(c=context_hiddens, c_mask=self.context_mask, l=self.FLAGS.hidden_size*2) # shape (batch_size, context_len, hidden_size*2)
+
+        blended_reps = tf.concat([bidaf_output,selfattn_output], axis=2)
+        blended_reps_final = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
         #######################################################
 
         # Use softmax layer to compute probability distribution for start location
