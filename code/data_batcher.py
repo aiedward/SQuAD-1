@@ -177,7 +177,7 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
 
         # feats = zip(*(pos_ids, ner_ids, match_orig, match_lemma))  # (N,4)
         # feats = zip(*(pos_ids, match_orig, match_lemma))  # (N,3)
-        feats = zip(*(pos_ids, tf, match_orig, match_lemma))  # (N,4)
+        feats = zip(*(pos_ids, match_orig, match_orig, match_lemma))  # (N,4)
         ##############################################################
 
         # read the next line from each file

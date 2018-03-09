@@ -103,7 +103,7 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
 
         # feats = zip(*(pos_ids, ner_ids, match_orig, match_lemma))  # (N,4)
         # feats = zip(*(pos_ids, match_orig, match_lemma))  # (N,3)
-        feats = zip(*(pos_ids, tf, match_orig, match_lemma))  # (N,4)
+        feats = zip(*(pos_ids, match_orig, match_orig, match_lemma))  # (N,4)
         ##############################################################
 
         # Convert context_tokens and qn_tokens to context_ids and qn_ids

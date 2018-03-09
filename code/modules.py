@@ -271,18 +271,18 @@ class SelfAttn(object):
         self.keep_prob   = keep_prob
         self.hidden_size = hidden_size
 
-    def build_graph(self, c, c_mask, l):
+    def build_graph(self, c, c_mask):
         """
         Inputs:
           c:        context embeddings,  Tensor shape (batch_size, N, l).
           c_mask:   context mask,  Tensor shape (batch_size, N).
-          l:        length of each context representation
 
         Outputs:.
           output: Tensor shape ().
         """
         with vs.variable_scope("SelfAttn"):
 
+            l  = tf.shape(c)[2]
             v  = tf.get_variable("v",  shape=(self.hidden_size),    initializer=tf.contrib.layers.xavier_initializer()) # (h)
             W1 = tf.get_variable("W1", shape=(self.hidden_size, l), initializer=tf.contrib.layers.xavier_initializer()) # (h,l)
             W2 = tf.get_variable("W2", shape=(self.hidden_size, l), initializer=tf.contrib.layers.xavier_initializer()) # (h,l)

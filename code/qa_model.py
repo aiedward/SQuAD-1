@@ -57,7 +57,7 @@ class QAModel(object):
         with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
             self.add_placeholders()
             self.add_embedding_layer(emb_matrix)
-            self.add_aligned_question_embs() ###
+            # self.add_aligned_question_embs() ###
             self.add_features() ###
             self.add_dummy_features() ###
             self.build_graph()
@@ -151,8 +151,11 @@ class QAModel(object):
         """     
         with vs.variable_scope("dummy_features"):
             actual_batch_size = tf.shape(self.feats)[0] # may not be batch_size if at end of file, for example
-            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size,self.FLAGS.question_len,self.FLAGS.embedding_size+self.FLAGS.num_feats],tf.float32)), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
-            print('Added dummy features!')
+            
+ 
+            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size,self.FLAGS.question_len,self.FLAGS.num_feats],tf.float32)), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
+            print('Added dummy features (assume aligned_question_embs are NOT used!')
+            print('You''re using a shared encoder, right?')
 
     def build_graph(self):
         """Builds the main part of the graph for the model, starting from the input embeddings to the final distributions for the answer span.
@@ -168,12 +171,12 @@ class QAModel(object):
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
-        encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
-        encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
-        # encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoder")
+        # encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
+        # encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
+        encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoder")
 
-        context_hiddens  = encoderC.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
-        question_hiddens = encoderQ.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
+        context_hiddens  = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
+        question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
         # ################### BASIC ATTENTION ###################
         # # Use context hidden states to attend to question hidden states
@@ -197,9 +200,13 @@ class QAModel(object):
 
         # ## self-attention
         # selfattn_layer  = SelfAttn(self.keep_prob, self.FLAGS.hidden_size)
-        # selfattn_output = selfattn_layer.build_graph(c=context_hiddens, c_mask=self.context_mask, l=self.FLAGS.hidden_size*2) # shape (batch_size, context_len, hidden_size*2)
-
+        # selfattn_output = selfattn_layer.build_graph(c=context_hiddens, c_mask=self.context_mask) # shape (batch_size, context_len, hidden_size*2)
         # blended_reps = tf.concat([bidaf_output,selfattn_output], axis=2)
+
+        # Add modeling layer after BiDAF
+        # encoderMod   = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderMod")
+        # blended_reps = encoderMod.build_graph(blended_reps, self.context_mask) # (batch_size, context_len, hidden_size*2)
+
         blended_reps_final = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
         #######################################################
 
