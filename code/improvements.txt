@@ -7,7 +7,7 @@ added aligned question embedding, SEPARATE ENCODERS, smart get_start(K=15), one-
 aligned question embedding, SHARED ENCODERS, smart get_start(K=15), one-layer RNN (trained, "aligned_share") -- loss curve looks identical to separate encoders
 self attention, batch size:10, hidden layer:100, context_len:300 (trained, "self") -- higher loss, memory issues
 no more self attention, added NER features (trained, "NER") -- about the same as without NER, but 5x slower
-added tf feature (no more NER)
+added tf feature (no more NER) (trained, "tf") -- looks sliiiiightly worse than aligned... let me try separate encoders
 
 other things:
 - keep word embeddings fixed, except for 1000 most common question words

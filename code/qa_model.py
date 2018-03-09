@@ -168,12 +168,12 @@ class QAModel(object):
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
-        # encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
-        # encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
-        encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoder")
+        encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
+        encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
+        # encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoder")
 
-        context_hiddens  = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
-        question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
+        context_hiddens  = encoderC.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
+        question_hiddens = encoderQ.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
         # ################### BASIC ATTENTION ###################
         # # Use context hidden states to attend to question hidden states
@@ -194,7 +194,7 @@ class QAModel(object):
         bidaf_layer  = BidirecAttn(self.keep_prob, self.FLAGS.hidden_size)
         bidaf_output = bidaf_layer.build_graph(c=context_hiddens, c_mask=self.context_mask, q=question_hiddens, q_mask=self.qn_mask) # attn_output is shape (batch_size, context_len, hidden_size*8)
         blended_reps = bidaf_output
-        
+
         # ## self-attention
         # selfattn_layer  = SelfAttn(self.keep_prob, self.FLAGS.hidden_size)
         # selfattn_output = selfattn_layer.build_graph(c=context_hiddens, c_mask=self.context_mask, l=self.FLAGS.hidden_size*2) # shape (batch_size, context_len, hidden_size*2)
