@@ -296,18 +296,6 @@ class SelfAttn(object):
             Q = tf.tanh(Q1 + Q2) # (b, N, N, h)
             e = tf.tensordot(Q, v, axes=[[3],[0]]) # (b, N, N)
             alpha,_ = masked_softmax(e, tf.expand_dims(c_mask,1), dim=2)  # take row-wise softmax of e; (b, N, N)
-
-            print('~~~~~~~')
-            print(c.get_shape())
-            print(v.get_shape())
-            print(W1.get_shape())
-            print(W2.get_shape())
-            print(Q1.get_shape())
-            print(Q2.get_shape())
-            print(Q.get_shape())
-            print(e.get_shape())
-            print(alpha.get_shape())
-            print('~~~~~~~')
             alpha = tf.expand_dims(alpha,3) # (b, M, N, 1) # note, M=N, denote M for clarity
             a = alpha*tf.expand_dims(c,1)   # (b, M, N, l) # note, M=N, denote M for clarity
             a = tf.reduce_sum(a,axis=2)  # (b, M, l)    # note, M=N, denote M for clarity

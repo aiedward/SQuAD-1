@@ -81,12 +81,12 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
         # calculate POS and NER tags (as strings)
         pos_tree = pos_tag(context_tokens)
         pos_tags = [p[1] for p in pos_tree]
-        # chunk = ne_chunk(pos_tree)
-        # ner_tags = [ne[2][2:] for ne in tree2conlltags(chunk)]
+        chunk = ne_chunk(pos_tree)
+        ner_tags = [ne[2][2:] for ne in tree2conlltags(chunk)]
 
         # convert POS and NER tags to ints using dictionary
         pos_ids = [pos2int[pos] if pos in pos_keys else -1 for pos in pos_tags]
-        # ner_ids = [ner2int[ne]  if ne  in ner_keys else 0  for ne  in ner_tags]
+        ner_ids = [ner2int[ne]  if ne  in ner_keys else 0  for ne  in ner_tags]
 
         # compute lemmatized version of each context token                
         lems = [str(lemmatizer.lemmatize(tok,get_wordnet_pos(pos))) if get_wordnet_pos(pos) else str(lemmatizer.lemmatize(tok)) for tok,pos in zip(context_tokens,pos_tags)]
@@ -96,8 +96,8 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
         match_lower = [int(any(context_token.lower()==q for q in qn_tokens)) for context_token in context_tokens] # lower case
         match_lemma = [int(any(context_token_lem==q     for q in qn_tokens)) for context_token_lem in lems]    # lemma form
 
-        # feats = zip(*(pos_ids, ner_ids, match_orig, match_lower, match_lemma))  # (N,5)
-        feats = zip(*(pos_ids, match_orig, match_lower, match_lemma))  # (N,4)
+        feats = zip(*(pos_ids, ner_ids, match_orig, match_lower, match_lemma))  # (N,5)
+        # feats = zip(*(pos_ids, match_orig, match_lower, match_lemma))  # (N,4)
         ##############################################################
 
         # Convert context_tokens and qn_tokens to context_ids and qn_ids
