@@ -26,7 +26,7 @@ import numpy as np
 from six.moves import xrange
 from vocab import PAD_ID, UNK_ID
 
-from nltk import pos_tag, ne_chunk
+from nltk import pos_tag, ne_chunk, FreqDist
 from nltk.chunk import tree2conlltags
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import wordnet
@@ -143,6 +143,7 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
     pos_keys = pos2int.keys()
     ner_keys = ner2int.keys() 
     lemmatizer = WordNetLemmatizer()
+    a = 0.4
 
     while context_line and qn_line and ans_line: # while you haven't reached the end
 
@@ -155,23 +156,28 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
         # calculate POS and NER tags (as strings)
         pos_tree = pos_tag(context_tokens)
         pos_tags = [p[1] for p in pos_tree]
-        chunk = ne_chunk(pos_tree)
-        ner_tags = [ne[2][2:] for ne in tree2conlltags(chunk)]
+        # chunk = ne_chunk(pos_tree)
+        # ner_tags = [ne[2][2:] for ne in tree2conlltags(chunk)]
 
         # convert POS and NER tags to ints using dictionary
         pos_ids = [pos2int[pos] if pos in pos_keys else -1 for pos in pos_tags]
-        ner_ids = [ner2int[ne]  if ne  in ner_keys else 0  for ne  in ner_tags]
+        # ner_ids = [ner2int[ne]  if ne  in ner_keys else 0  for ne  in ner_tags]
 
         # compute lemmatized version of each context token                
         lems = [str(lemmatizer.lemmatize(tok,get_wordnet_pos(pos))) if get_wordnet_pos(pos) else str(lemmatizer.lemmatize(tok)) for tok,pos in zip(context_tokens,pos_tags)]
 
         # compare each context word to query words for three different versions
         match_orig  = [int(any(context_token==q         for q in qn_tokens)) for context_token in context_tokens] # original form
-        match_lower = [int(any(context_token.lower()==q for q in qn_tokens)) for context_token in context_tokens] # lower case
         match_lemma = [int(any(context_token_lem==q     for q in qn_tokens)) for context_token_lem in lems]    # lemma form
 
-        feats = zip(*(pos_ids, ner_ids, match_orig, match_lower, match_lemma))  # (N,5)
-        # feats = zip(*(pos_ids, match_orig, match_lower, match_lemma))  # (N,4)
+        # compute normalized term frequency
+        fdist = FreqDist(context_tokens)
+        max_count = float(max(fdist.values()))
+        tf = [a + (1-a)*fdist[w]/max_count for w in context_tokens]
+
+        # feats = zip(*(pos_ids, ner_ids, match_orig, match_lemma))  # (N,4)
+        # feats = zip(*(pos_ids, match_orig, match_lemma))  # (N,3)
+        feats = zip(*(pos_ids, tf, match_orig, match_lemma))  # (N,4)
         ##############################################################
 
         # read the next line from each file
