@@ -100,7 +100,7 @@ class SimpleSoftmaxLayer(object):
     def __init__(self):
         pass
 
-    def build_graph(self, inputs, masks, weights_regularizer=None):
+    def build_graph(self, inputs, masks, regularizer=None):
         """
         Applies one linear downprojection layer, then softmax.
 
