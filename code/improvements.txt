@@ -11,7 +11,7 @@ added tf feature (no more NER) (trained, "tf") -- looks sliiiiightly worse than 
 separate encoders (trained, "tf_sep") -- at 18K step, change dropout 0.15->0.30 and max_grad_norm 5.0->3.0 - 
 	***NOTE*** dummy features were added to question // {"f1": 60.11107793369007, "exact_match": 51.851851851851855}
 ~~ start saving best model based on f1/em average ~~
-add another RNNencoder (modeling layer) after bidaf layer, use separated encoders (remove unneccesary dummy features from Q), RNNs are 2-stack
+use 300 conext_length, double hidden by 200 -- model overfits. (trained, "feat2h")
 
 other things:
 - keep word embeddings fixed, except for 1000 most common question words
@@ -23,3 +23,7 @@ K=10: {"f1": 66.49116700082888, "exact_match": 57.65432098765432}
 K=8:  {"f1": 66.57032473699145, "exact_match": 58.148148148148145}
 K=7:  {"f1": 66.67434965583116, "exact_match": 58.51851851851852}
 K=6:  {"f1": 66.51966569997764, "exact_match": 58.51851851851852}
+
+>>> nltk.download('averaged_perceptron_tagger')
+>>> nltk.download('wordnet')
+>>> nltk.download('words')

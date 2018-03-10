@@ -54,8 +54,8 @@ class RNNEncoder(object):
 
         ## Stacked layer RNN implementaiton
         self.num_rnn_layers = num_rnn_layers
-        self.rnn_cells_fw = [DropoutWrapper(rnn_cell.GRUCell(self.hidden_size), input_keep_prob=self.keep_prob) for _ in range(num_rnn_layers)]
-        self.rnn_cells_bw = [DropoutWrapper(rnn_cell.GRUCell(self.hidden_size), input_keep_prob=self.keep_prob) for _ in range(num_rnn_layers)]
+        self.rnn_cells_fw = [DropoutWrapper(rnn_cell.LSTMCell(self.hidden_size), input_keep_prob=self.keep_prob) for _ in range(num_rnn_layers)]
+        self.rnn_cells_bw = [DropoutWrapper(rnn_cell.LSTMCell(self.hidden_size), input_keep_prob=self.keep_prob) for _ in range(num_rnn_layers)]
 
     def build_graph(self, inputs, masks):
         """
@@ -100,7 +100,7 @@ class SimpleSoftmaxLayer(object):
     def __init__(self):
         pass
 
-    def build_graph(self, inputs, masks):
+    def build_graph(self, inputs, masks, weights_regularizer=None):
         """
         Applies one linear downprojection layer, then softmax.
 
@@ -120,7 +120,7 @@ class SimpleSoftmaxLayer(object):
         with vs.variable_scope("SimpleSoftmaxLayer"):
 
             # Linear downprojection layer
-            logits = tf.contrib.layers.fully_connected(inputs, num_outputs=1, activation_fn=None) # shape (batch_size, seq_len, 1)
+            logits = tf.contrib.layers.fully_connected(inputs, num_outputs=1, activation_fn=None, weights_regularizer=regularizer) # shape (batch_size, seq_len, 1)
             logits = tf.squeeze(logits, axis=[2]) # shape (batch_size, seq_len)
 
             # Take softmax over sequence
@@ -282,7 +282,7 @@ class SelfAttn(object):
         """
         with vs.variable_scope("SelfAttn"):
 
-            l  = tf.shape(c)[2]
+            l  = c.get_shape().as_list()[2]
             v  = tf.get_variable("v",  shape=(self.hidden_size),    initializer=tf.contrib.layers.xavier_initializer()) # (h)
             W1 = tf.get_variable("W1", shape=(self.hidden_size, l), initializer=tf.contrib.layers.xavier_initializer()) # (h,l)
             W2 = tf.get_variable("W2", shape=(self.hidden_size, l), initializer=tf.contrib.layers.xavier_initializer()) # (h,l)
