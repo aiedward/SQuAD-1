@@ -55,7 +55,7 @@ tf.app.flags.DEFINE_integer("question_len", 30, "The maximum question length of 
 tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained word vectors. This needs to be one of the available GloVe dimensions: 50/100/200/300")
 tf.app.flags.DEFINE_integer("num_feats", 4, "Number of context-word features added to embeddings")
 tf.app.flags.DEFINE_integer("num_rnn_layers", 2, "Number of RNN layers to stack in bidirectional RNNEncoder")
-tf.app.flags.DEFINE_integer("max_span", 7, "Maximum span of answer allowed when maximizing p_start*p_end")
+tf.app.flags.DEFINE_integer("max_span", 15, "Maximum span of answer allowed when maximizing p_start*p_end")
 
 # How often to print, save, eval
 tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per print.")
