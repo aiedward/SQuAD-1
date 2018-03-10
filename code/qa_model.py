@@ -206,7 +206,7 @@ class QAModel(object):
         encoderMod   = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderMod")
         blended_reps = encoderMod.build_graph(blended_reps, self.context_mask) # (batch_size, context_len, hidden_size*2)
 
-        blended_reps_final = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size, regularizer=tf.contrib.layers.l2_regularizer(scale=self.FLAGS.L2_reg)) # blended_reps_final is shape (batch_size, context_len, hidden_size)
+        blended_reps_final = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size, weights_regularizer=tf.contrib.layers.l2_regularizer(scale=self.FLAGS.L2_reg)) # blended_reps_final is shape (batch_size, context_len, hidden_size)
         #######################################################
 
         # Use softmax layer to compute probability distribution for start location
