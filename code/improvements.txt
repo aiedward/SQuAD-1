@@ -10,12 +10,11 @@ no more self attention, added NER features (trained, "NER") -- about the same as
 added tf feature (no more NER) (trained, "tf") -- looks sliiiiightly worse than aligned... let me try separate encoders
 separate encoders (trained, "tf_sep") -- at 18K step, change dropout 0.15->0.30 and max_grad_norm 5.0->3.0 - 
 	***NOTE*** dummy features were added to question // {"f1": 60.11107793369007, "exact_match": 51.851851851851855}
+~~ start saving best model based on f1/em average ~~
 add another RNNencoder (modeling layer) after bidaf layer, use separated encoders (remove unneccesary dummy features from Q), RNNs are 2-stack
-
 
 other things:
 - keep word embeddings fixed, except for 1000 most common question words
-
 
 "feat model"
 K=15: {"f1": 65.48; "exact_match": 56.54}

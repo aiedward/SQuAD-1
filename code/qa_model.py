@@ -534,6 +534,7 @@ class QAModel(object):
         bestmodel_ckpt_path = os.path.join(bestmodel_dir, "qa_best.ckpt")
         best_dev_f1 = None
         best_dev_em = None
+        best_dev_av = None
 
         # for TensorBoard
         summary_writer = tf.summary.FileWriter(self.FLAGS.train_dir, session.graph)
@@ -592,11 +593,11 @@ class QAModel(object):
                     logging.info("Epoch %d, Iter %d, Dev F1 score: %f, Dev EM score: %f" % (epoch, global_step, dev_f1, dev_em))
                     write_summary(dev_f1, "dev/F1", summary_writer, global_step)
                     write_summary(dev_em, "dev/EM", summary_writer, global_step)
-
+                    dev_av = (dev_f1+dev_em)/2
 
                     # Early stopping based on dev EM. You could switch this to use F1 instead.
-                    if best_dev_em is None or dev_em > best_dev_em:
-                        best_dev_em = dev_em
+                    if best_dev_av is None or dev_av > best_dev_av:
+                        best_dev_av = dev_av
                         logging.info("Saving to %s..." % bestmodel_ckpt_path)
                         self.bestmodel_saver.save(session, bestmodel_ckpt_path, global_step=global_step)
 
