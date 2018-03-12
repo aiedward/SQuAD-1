@@ -203,8 +203,8 @@ class QAModel(object):
         # blended_reps = tf.concat([bidaf_output,selfattn_output], axis=2)
 
         # Add modeling layer after BiDAF
-        encoderMod   = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderMod")
-        blended_reps = encoderMod.build_graph(blended_reps, self.context_mask) # (batch_size, context_len, hidden_size*2)
+        # encoderMod   = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderMod")
+        # blended_reps = encoderMod.build_graph(blended_reps, self.context_mask) # (batch_size, context_len, hidden_size*2)
 
         blended_reps_final = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
         #######################################################

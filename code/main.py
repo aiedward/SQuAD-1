@@ -46,9 +46,9 @@ tf.app.flags.DEFINE_integer("num_epochs", 0, "Number of epochs to train. 0 means
 # Hyperparameters
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
-tf.app.flags.DEFINE_float("dropout", 0.5, "Fraction of units randomly dropped on non-recurrent connections.")
+tf.app.flags.DEFINE_float("dropout", 0.7, "Fraction of units randomly dropped on non-recurrent connections.")
 tf.app.flags.DEFINE_float("L2_reg", 0.01, "Regularization constant for L2 loss on dense connections.")
-tf.app.flags.DEFINE_integer("batch_size", 80, "Batch size to use")
+tf.app.flags.DEFINE_integer("batch_size", 50, "Batch size to use")
 tf.app.flags.DEFINE_integer("hidden_size", 400, "Size of the hidden states")
 tf.app.flags.DEFINE_integer("context_len", 300, "The maximum context length of your model")
 tf.app.flags.DEFINE_integer("question_len", 30, "The maximum question length of your model")
