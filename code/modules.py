@@ -100,7 +100,7 @@ class SimpleSoftmaxLayer(object):
     def __init__(self):
         pass
 
-    def build_graph(self, inputs, masks, regularizer=None):
+    def build_graph(self, inputs, masks):
         """
         Applies one linear downprojection layer, then softmax.
 
@@ -120,7 +120,7 @@ class SimpleSoftmaxLayer(object):
         with vs.variable_scope("SimpleSoftmaxLayer"):
 
             # Linear downprojection layer
-            logits = tf.contrib.layers.fully_connected(inputs, num_outputs=1, activation_fn=None, weights_regularizer=regularizer) # shape (batch_size, seq_len, 1)
+            logits = tf.contrib.layers.fully_connected(inputs, num_outputs=1, activation_fn=None) # shape (batch_size, seq_len, 1)
             logits = tf.squeeze(logits, axis=[2]) # shape (batch_size, seq_len)
 
             # Take softmax over sequence

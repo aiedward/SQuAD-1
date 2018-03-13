@@ -44,18 +44,27 @@ tf.app.flags.DEFINE_string("experiment_name", "", "Unique name for your experime
 tf.app.flags.DEFINE_integer("num_epochs", 0, "Number of epochs to train. 0 means train indefinitely")
 
 # Hyperparameters
-tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
-tf.app.flags.DEFINE_float("dropout", 0.7, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_float("L2_reg", 0.01, "Regularization constant for L2 loss on dense connections.")
-tf.app.flags.DEFINE_integer("batch_size", 50, "Batch size to use")
-tf.app.flags.DEFINE_integer("hidden_size", 400, "Size of the hidden states")
+tf.app.flags.DEFINE_float("dropout", 0.20, "Fraction of units randomly dropped on non-recurrent connections.")
+tf.app.flags.DEFINE_integer("batch_size", 60, "Batch size to use")
+tf.app.flags.DEFINE_integer("hidden_size", 100, "Size of the hidden states")
 tf.app.flags.DEFINE_integer("context_len", 300, "The maximum context length of your model")
 tf.app.flags.DEFINE_integer("question_len", 30, "The maximum question length of your model")
-tf.app.flags.DEFINE_integer("embedding_size", 200, "Size of the pretrained word vectors. This needs to be one of the available GloVe dimensions: 50/100/200/300")
+tf.app.flags.DEFINE_integer("embedding_size", 50, "Size of the pretrained word vectors. This needs to be one of the available GloVe dimensions: 50/100/200/300")
+
+##########################################################################################
+tf.app.flags.DEFINE_integer("word_len", 12, "The maximum word length of your model")
+tf.app.flags.DEFINE_integer("char_embedding_size", 20, "Size of the character embedding vectors.")
+tf.app.flags.DEFINE_integer("cnn_width", 5, "The width of the character CNN")
+tf.app.flags.DEFINE_integer("num_filters", 100, "The number of CNN filters")
+
+tf.app.flags.DEFINE_integer("num_rnn_layers_embed", 1, "Number of RNN layers to stack in bidirectional RNNEncoder (word embed layer)")
+tf.app.flags.DEFINE_integer("num_rnn_layers_model", 2, "Number of RNN layers to stack in bidirectional RNNEncoder (model layer)")
+
 tf.app.flags.DEFINE_integer("num_feats", 4, "Number of context-word features added to embeddings")
-tf.app.flags.DEFINE_integer("num_rnn_layers", 2, "Number of RNN layers to stack in bidirectional RNNEncoder")
 tf.app.flags.DEFINE_integer("max_span", 15, "Maximum span of answer allowed when maximizing p_start*p_end")
+##########################################################################################
 
 # How often to print, save, eval
 tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per print.")

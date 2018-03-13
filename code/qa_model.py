@@ -56,6 +56,7 @@ class QAModel(object):
         # Add all parts of the graph
         with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
             self.add_placeholders()
+            self.get_char_features() ###
             self.add_embedding_layer(emb_matrix)
             self.add_aligned_question_embs() ###
             self.add_features() ###
@@ -73,7 +74,7 @@ class QAModel(object):
         # Define optimizer and updates
         # (updates is what you need to fetch in session.run to do a gradient update)
         self.global_step = tf.Variable(0, name="global_step", trainable=False)
-        opt = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate) # you can try other optimizers
+        opt = tf.train.AdadeltaOptimizer(learning_rate=FLAGS.learning_rate) # you can try other optimizers
         self.updates = opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step)
 
         # Define savers (for checkpointing) and summaries (for tensorboard)
@@ -98,9 +99,22 @@ class QAModel(object):
         # This is necessary so that we can instruct the model to use dropout when training, but not when testing
         self.keep_prob = tf.placeholder_with_default(1.0, shape=())
 
-        ##################### ADD PLACEHOLDER FOR FEATURES #####################
-        self.feats = tf.placeholder(tf.float32, shape=[None,self.FLAGS.context_len,self.FLAGS.num_feats])
+        ################ ADD PLACEHOLDER FOR FEATURES & CHAR_IDS ###############
+        self.feats  = tf.placeholder(tf.float32,  shape=[None, self.FLAGS.context_len, self.FLAGS.num_feats])
+        self.char_ids  = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, self.FLAGS.word_len])
+        self.char_mask = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, self.FLAGS.word_len])
         ########################################################################
+
+    def get_char_features(self):
+        with vs.variable_scope("get_char"):
+            char_embedding_matrix = tf.get_variable("char_matrix", shape=(43,self.FLAGS.char_embedding_size), initializer=tf.contrib.layers.xavier_initializer()) # shape (43, char_embedding_size)
+            char_emb = embedding_ops.embedding_lookup(char_embedding_matrix, self.char_ids) # shape (batch_size, context_len, word_len, char_embedding_size)
+            char_emb = tf.reshape(char_emb, [-1, self.FLAGS.word_len, self.FLAGS.char_embedding_size]) # (batch_size * context_len, word_len, char_embedding_size)
+            char_hidden = tf.layers.conv1d(char_emb,filters=self.FLAGS.num_filters,kernel_size=self.FLAGS.cnn_width, padding='same') # (batch_size * context_len, word_len, num_filters)
+            char_hidden = tf.reshape(char_hidden, [-1, self.FLAGS.context_len, self.FLAGS.word_len, self.FLAGS.num_filters]) # (batch_size, context_len, word_len, num_filters)
+            char_hidden = char_hidden + tf.cast(tf.expand_dims(self.char_mask, 3), 'float')*(-1e30) # subtract large number from padded characters
+            self.char_hidden = tf.nn.dropout(tf.reduce_max(char_hidden,axis=2), self.keep_prob) # (batch_size, context_len, num_filters)
+            print('Calculated CNN features!')
 
     def add_embedding_layer(self, emb_matrix):
         """
@@ -124,25 +138,29 @@ class QAModel(object):
         """
         Adds aligned question embeddings to context embeddings, and another dummy row to question embeddings. See DrQA fro details.
         """        
-        attn_layer   = BasicAttn(self.keep_prob, self.FLAGS.embedding_size, self.FLAGS.embedding_size)
-        attn_dist, _ = attn_layer.build_graph(self.qn_embs, self.qn_mask, self.context_embs) # havent added features to *embs yet
-        
-        # attn_dist    : (batch_size, context_len, question_len)
-        # self.qn_embs : (batch_size, context_len, embedding_size)
-        a = tf.expand_dims(attn_dist,3) * tf.expand_dims(self.qn_embs,1) # (b, N, M, d) = (b,N,M,1)*(b,1,M,d)
-        a = tf.reduce_sum(a, axis=2) # (b,N,d)
+        with vs.variable_scope("add_alignedQ"):
+            attn_layer   = BasicAttn(self.keep_prob, self.FLAGS.embedding_size, self.FLAGS.embedding_size)
+            attn_dist, _ = attn_layer.build_graph(self.qn_embs, self.qn_mask, self.context_embs) # havent added features to *embs yet
+            
+            # attn_dist    : (batch_size, context_len, question_len)
+            # self.qn_embs : (batch_size, context_len, embedding_size)
+            a = tf.expand_dims(attn_dist,3) * tf.expand_dims(self.qn_embs,1) # (b, N, M, d) = (b,N,M,1)*(b,1,M,d)
+            a = tf.reduce_sum(a, axis=2) # (b,N,d)
 
-        # concatenate aligned question embedding to cotext embeddings
-        self.context_embs = tf.concat((self.context_embs, a), axis=2) # shape (batch_size, context_len, 2*embedding_size)
-        print('Added aligned question_embs!')
+            # concatenate aligned question embedding to cotext embeddings
+            self.context_embs = tf.concat((self.context_embs, a), axis=2) # shape (batch_size, context_len, 2*embedding_size)
+            print('Added aligned question_embs!')
 
     def add_features(self):
         """
-        Adds word features e.g. (POS,NER,ExactMatch[x3]) to the graph. Must be called after add_embedding_layer
+        Adds word features e.g. (POS,NER,ExactMatch[x3]) and character CNN output to the graph. 
+        Must be called after add_embedding_layer and get_char_features
         """     
         with vs.variable_scope("features"):
             self.context_embs = tf.concat((self.context_embs, self.feats), axis=2) # shape (batch_size, context_len, (2*embedding_size)+num_feats)
-            print('Added features!')
+            print('Added manual features!')
+            self.context_embs = tf.concat((self.context_embs, self.char_hidden), axis=2) # shape (batch_size, context_len, (2*embedding_size)+num_feats+num_filters)
+            print('Added CNN features!')
 
     def add_dummy_features(self):
         """
@@ -150,9 +168,8 @@ class QAModel(object):
         """     
         with vs.variable_scope("dummy_features"):
             actual_batch_size = tf.shape(self.feats)[0] # may not be batch_size if at end of file, for example
-            
- 
-            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size,self.FLAGS.question_len,self.FLAGS.num_feats],tf.float32)), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
+            additional_features = self.FLAGS.embedding_size + self.FLAGS.num_feats + self.FLAGS.num_filters
+            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size, self.FLAGS.question_len, additional_features],tf.float32)), axis=2) # shape (batch_size, context_len, embedding_size+num_feats)
             print('Added dummy features (assume aligned_question_embs are NOT used!')
             print('You''re using a shared encoder, right?')
 
@@ -170,9 +187,9 @@ class QAModel(object):
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
-        encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderC")
-        encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderQ")
-        #encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoder")
+        encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers_embed, scope="RNNEncoderC")
+        encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers_embed, scope="RNNEncoderQ")
+        #encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers_embed, scope="RNNEncoder")
 
         context_hiddens  = encoderC.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
         question_hiddens = encoderQ.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
@@ -203,23 +220,29 @@ class QAModel(object):
         # blended_reps = tf.concat([bidaf_output,selfattn_output], axis=2)
 
         # Add modeling layer after BiDAF
-        # encoderMod   = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers, scope="RNNEncoderMod")
-        # blended_reps = encoderMod.build_graph(blended_reps, self.context_mask) # (batch_size, context_len, hidden_size*2)
+        encoderMod   = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers_model, scope="RNNEncoderMod")
+        blended_reps = encoderMod.build_graph(blended_reps, self.context_mask) # (batch_size, context_len, hidden_size*2)
 
-        blended_reps_final = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
+        # get final representation for START
+        blended_reps_start = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_start is shape (batch_size, context_len, hidden_size)
+
+        # get final representation for END        
+        encoderEnd   = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, num_rnn_layers=1, scope="RNNEncoderEnd")
+        blended_reps_end = encoderEnd.build_graph(blended_reps, self.context_mask)
+
         #######################################################
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
         with vs.variable_scope("StartDist"):
             softmax_layer_start = SimpleSoftmaxLayer()
-            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(blended_reps_final, self.context_mask)
+            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(blended_reps_start, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
             softmax_layer_end = SimpleSoftmaxLayer()
-            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(blended_reps_final, self.context_mask)
+            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(blended_reps_end, self.context_mask)
 
 
     def add_loss(self):
@@ -286,6 +309,8 @@ class QAModel(object):
         input_feed[self.ans_span] = batch.ans_span
         input_feed[self.keep_prob] = 1.0 - self.FLAGS.dropout # apply dropout
         input_feed[self.feats] = batch.feats
+        input_feed[self.char_ids] = batch.char_ids
+        input_feed[self.char_mask] = batch.char_mask
 
         # output_feed contains the things we want to fetch.
         output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm]
@@ -318,6 +343,8 @@ class QAModel(object):
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.ans_span] = batch.ans_span
         input_feed[self.feats] = batch.feats
+        input_feed[self.char_ids] = batch.char_ids
+        input_feed[self.char_mask] = batch.char_mask
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.loss]
@@ -344,6 +371,8 @@ class QAModel(object):
         input_feed[self.qn_ids] = batch.qn_ids
         input_feed[self.qn_mask] = batch.qn_mask
         input_feed[self.feats] = batch.feats
+        input_feed[self.char_ids] = batch.char_ids
+        input_feed[self.char_mask] = batch.char_mask
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
         output_feed = [self.probdist_start, self.probdist_end]
@@ -411,7 +440,7 @@ class QAModel(object):
         # which are longer than our context_len or question_len.
         # We need to do this because if, for example, the true answer is cut
         # off the context, then the loss function is undefined.
-        for batch in get_batch_generator(self.word2id, dev_context_path, dev_qn_path, dev_ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=True, num_feats=self.FLAGS.num_feats):
+        for batch in get_batch_generator(self.word2id, dev_context_path, dev_qn_path, dev_ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=True, num_feats=self.FLAGS.num_feats, word_len=self.FLAGS.word_len):
 
             # Get loss for this batch
             loss = self.get_loss(session, batch)
@@ -466,7 +495,7 @@ class QAModel(object):
 
         # Note here we select discard_long=False because we want to sample from the entire dataset
         # That means we're truncating, rather than discarding, examples with too-long context or questions
-        for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False, num_feats=self.FLAGS.num_feats):
+        for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False, num_feats=self.FLAGS.num_feats, word_len=self.FLAGS.word_len):
 
             pred_start_pos, pred_end_pos = self.get_start_end_pos(session, batch, self.FLAGS.max_span)
 
@@ -550,7 +579,7 @@ class QAModel(object):
             epoch_tic = time.time()
 
             # Loop over batches
-            for batch in get_batch_generator(self.word2id, train_context_path, train_qn_path, train_ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=True, num_feats=self.FLAGS.num_feats):
+            for batch in get_batch_generator(self.word2id, train_context_path, train_qn_path, train_ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=True, num_feats=self.FLAGS.num_feats, word_len=self.FLAGS.word_len):
 
                 # Run training iteration
                 iter_tic = time.time()
