@@ -34,7 +34,7 @@ from nltk.corpus import wordnet
 class Batch(object):
     """A class to hold the information needed for a training batch"""
 
-    def __init__(self, context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats, char_ids, char_mask, uuids=None):
+    def __init__(self, context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats, char_ids, char_mask, commonQ_mask, commonQ_emb_indices, charQ_ids, charQ_mask, uuids=None):
         """
         Inputs:
           {context/qn}_ids: Numpy arrays.
@@ -65,6 +65,12 @@ class Batch(object):
 
         self.char_ids  = char_ids
         self.char_mask = char_mask
+
+        self.charQ_ids  = charQ_ids
+        self.charQ_mask = charQ_mask
+
+        self.commonQ_mask = commonQ_mask
+        self.commonQ_emb_indices = commonQ_emb_indices
 
 def get_wordnet_pos(treebank_tag):
 
@@ -113,6 +119,10 @@ def padded(token_batch, batch_pad=0):
     maxlen = max(map(lambda x: len(x), token_batch)) if batch_pad == 0 else batch_pad
     return map(lambda token_list: token_list + [PAD_ID] * (maxlen - len(token_list)), token_batch)
 
+def paddedBool(token_batch, batch_pad=0):
+    maxlen = max(map(lambda x: len(x), token_batch)) if batch_pad == 0 else batch_pad
+    return map(lambda token_list: token_list + [False] * (maxlen - len(token_list)), token_batch)
+
 def padded2(token_batch, num_feats, batch_pad=0, islist=False):
     maxlen = max(map(lambda x: len(x), token_batch)) if batch_pad == 0 else batch_pad
     if islist:
@@ -121,7 +131,7 @@ def padded2(token_batch, num_feats, batch_pad=0, islist=False):
         return map(lambda token_list: token_list + [num_feats*(PAD_ID,)] * (maxlen - len(token_list)) , token_batch)
 
 
-def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, discard_long, word_len):
+def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, discard_long, word_len, mcids_dict):
     """
     Adds more batches into the "batches" list.
 
@@ -159,6 +169,8 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
         "?":41, "'":42}
     char_keys = char2id.keys()
 
+    mcids_keys = mcids_dict.keys()
+
     while context_line and qn_line and ans_line: # while you haven't reached the end
 
         # Convert tokens to word ids
@@ -170,6 +182,15 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
         char_ids = [[char2id[char] if char in char_keys else UNK_ID for char in tok.lower()] for tok  in context_tokens]
         char_ids = [x[:word_len] for x in char_ids] # (N, <=word_len)
         char_ids = padded(char_ids, word_len) # (N, word_len)
+
+        charQ_ids = [[char2id[char] if char in char_keys else UNK_ID for char in tok.lower()] for tok  in qn_tokens]
+        charQ_ids = [x[:word_len] for x in charQ_ids] # (M, <=word_len)
+        charQ_ids = padded(charQ_ids, word_len) # (M, word_len)
+        ##############################################################
+
+        ########## GET COMMONQ EMBEDDING INDICES AND MASK ############
+        commonQ_mask        = [x in mcids_keys for x in qn_ids] # (M)
+        commonQ_emb_indices = [mcids_dict.get(x,0) for x in qn_ids] # (M) - note the 0 index doesnt matter due to mask
         ##############################################################
 
         ########## GENERATE EXACT MATCH + POS/NER FEATURES ###########
@@ -216,6 +237,9 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
                 continue
             else: # truncate
                 qn_ids = qn_ids[:question_len]
+                commonQ_mask = commonQ_mask[:question_len]
+                commonQ_emb_indices = commonQ_emb_indices[:question_len]
+                charQ_ids = charQ_ids[:question_len]
 
         # discard or truncate too-long contexts
         if len(context_ids) > context_len:
@@ -227,7 +251,7 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
                 char_ids = char_ids[:context_len]
 
         # add to examples
-        examples.append((context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens, feats, char_ids))
+        examples.append((context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens, feats, char_ids, commonQ_mask, commonQ_emb_indices, charQ_ids))
 
         # stop refilling if you have 160 batches
         if len(examples) == batch_size * 160:
@@ -243,9 +267,9 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
     for batch_start in xrange(0, len(examples), batch_size):
 
         # Note: each of these is a list length batch_size of lists of ints (except on last iter when it might be less than batch_size)
-        context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch, feats_batch, char_ids_batch = zip(*examples[batch_start:batch_start+batch_size])
+        context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch, feats_batch, char_ids_batch, commonQ_mask_batch, commonQ_emb_indices_batch, charQ_ids_batch = zip(*examples[batch_start:batch_start+batch_size])
 
-        batches.append((context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch, feats_batch, char_ids_batch))
+        batches.append((context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch, feats_batch, char_ids_batch, commonQ_mask_batch, commonQ_emb_indices_batch, charQ_ids_batch))
 
     # shuffle the batches
     random.shuffle(batches)
@@ -255,7 +279,7 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
     return
 
 
-def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, context_len, question_len, discard_long, num_feats, word_len):
+def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, context_len, question_len, discard_long, num_feats, word_len, mcids_dict):
     """
     This function returns a generator object that yields batches.
     The last batch in the dataset will be a partial batch.
@@ -274,12 +298,12 @@ def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, co
 
     while True:
         if len(batches) == 0: # add more batches
-            refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, discard_long, word_len)
+            refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size, context_len, question_len, discard_long, word_len, mcids_dict)
         if len(batches) == 0:
             break
 
         # Get next batch. These are all lists length batch_size
-        (context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens, feats, char_ids) = batches.pop(0)
+        (context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens, feats, char_ids, commonQ_mask, commonQ_emb_indices, charQ_ids) = batches.pop(0)
 
         # Pad context_ids and qn_ids
         qn_ids = padded(qn_ids, question_len) # pad questions to length question_len
@@ -304,8 +328,16 @@ def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, co
         char_ids = np.array(char_ids)
         char_mask = (char_ids != PAD_ID).astype(np.int32)
 
+        charQ_ids = padded2(charQ_ids, word_len, question_len, islist=True)
+        charQ_ids = np.array(charQ_ids)
+        charQ_mask = (charQ_ids != PAD_ID).astype(np.int32)
+
+        # Pad commonQ_mask and commonQ_emb_indices / convert to np.array
+        commonQ_mask = np.array(paddedBool(commonQ_mask, question_len))
+        commonQ_emb_indices = np.array(padded(commonQ_emb_indices, question_len))
+
         # Make into a Batch object
-        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats, char_ids, char_mask)
+        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats, char_ids, char_mask, commonQ_mask, commonQ_emb_indices, charQ_ids, charQ_mask)
 
         yield batch
 

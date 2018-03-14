@@ -128,7 +128,6 @@ class SimpleSoftmaxLayer(object):
 
             return masked_logits, prob_dist
 
-
 class BasicAttn(object):
     """Module for basic attention.
 
@@ -154,7 +153,7 @@ class BasicAttn(object):
         self.key_vec_size = key_vec_size
         self.value_vec_size = value_vec_size
 
-    def build_graph(self, values, values_mask, keys):
+    def build_graph(self, values, values_mask, keys, hidden_size):
         """
         Keys attend to values.
         For each key, return an attention distribution and an attention output vector.
@@ -174,6 +173,10 @@ class BasicAttn(object):
             (using the attention distribution as weights).
         """
         with vs.variable_scope("BasicAttn"):
+
+            # note: applying the dense connection below effectively makes value_vec_size = key_vec_size = hidden_size
+            values = tf.layers.dense(values, hidden_size, activation=tf.nn.relu, reuse=tf.AUTO_REUSE, name="atnnDense", kernel_initializer=tf.contrib.layers.xavier_initializer())
+            keys   = tf.layers.dense(keys,   hidden_size, activation=tf.nn.relu, reuse=tf.AUTO_REUSE, name="atnnDense")
 
             # Calculate attention distribution
             values_t = tf.transpose(values, perm=[0, 2, 1]) # (batch_size, value_vec_size, num_values)

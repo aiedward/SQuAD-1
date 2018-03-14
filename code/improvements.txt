@@ -15,9 +15,14 @@ use 300 conext_length, double hidden by 200 -- model overfits. (trained, "feat2h
 FIS (stacked LSTMs, x2 // 200 length embeddings, HS 400 // no modeling layer): 
 	K=15: {"f1": 66.96108380700296, "exact_match": 58.51851851851852}
 	k=10: {"f1": 67.05299052853933, "exact_match": 58.641975308641975}
+cnn (same architecture as BiDAF) (trained, "cnn")
+*** NOTE: ALIGNED QUESTION EMBEDDINGS SHOULD HAVE BEEN USING A SINGLE DENSE LAYER WITH RELU ***
+allow 1000 most commonQ words to be re-learned
+*** NOTE: WAS NOT USING CHARCNN FOR QUERY ***
+now using charQ cnn + dense layer in aligned question embedding, revert back to adam
 
-other things:
-- keep word embeddings fixed, except for 1000 most common question words
+
+
 
 "feat model"
 K=15: {"f1": 65.48; "exact_match": 56.54}

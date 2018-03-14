@@ -41,7 +41,7 @@ def readnext(x):
     else:
         return x.pop(0)
 
-def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_data, batch_size, context_len, question_len, word_len):
+def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_data, batch_size, context_len, question_len, word_len, mcids_dict):
     """
     This is similar to refill_batches in data_batcher.py, but:
       (1) instead of reading from (preprocessed) datafiles, it reads from the provided lists
@@ -82,12 +82,23 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
         "?":41, "'":42}
     char_keys = char2id.keys()
 
+    mcids_keys = mcids_dict.keys()
+
     while qn_uuid and context_tokens and qn_tokens:
 
         ########## GENERATE CHARACTER TOKENS #########################
         char_ids = [[char2id[char] if char in char_keys else UNK_ID for char in tok.lower()] for tok  in context_tokens]
         char_ids = [x[:word_len] for x in char_ids] # (N, <=word_len)
         char_ids = padded(char_ids, word_len) # (N, word_len)
+
+        charQ_ids = [[char2id[char] if char in char_keys else UNK_ID for char in tok.lower()] for tok  in qn_tokens]
+        charQ_ids = [x[:word_len] for x in charQ_ids] # (M, <=word_len)
+        charQ_ids = padded(charQ_ids, word_len) # (M, word_len)
+        ##############################################################
+
+        ########## GET COMMONQ EMBEDDING INDICES AND MASK ############
+        commonQ_mask        = [x in mcids_keys for x in qn_ids] # (M)
+        commonQ_emb_indices = [mcids_dict.get(x,0) for x in qn_ids] # (M)
         ##############################################################
 
         ########## GENERATE EXACT MATCH + POS/NER FEATURES ###########
@@ -126,13 +137,16 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
         # Note: truncating context_ids may truncate the correct answer, meaning that it's impossible for your model to get the correct answer on this example!
         if len(qn_ids) > question_len:
             qn_ids = qn_ids[:question_len]
+            commonQ_mask = commonQ_mask[:question_len]
+            commonQ_emb_indices = commonQ_emb_indices[:question_len]
+            charQ_ids = charQ_ids[:question_len]
         if len(context_ids) > context_len:
             context_ids = context_ids[:context_len]
             feats = feats[:context_len]
             char_ids = char_ids[:context_len]
 
         # Add to list of examples
-        examples.append((qn_uuid, context_tokens, context_ids, qn_ids, feats, char_ids))
+        examples.append((qn_uuid, context_tokens, context_ids, qn_ids, feats, char_ids, commonQ_mask, commonQ_emb_indices, charQ_ids))
 
         # Stop if you've got a batch
         if len(examples) == batch_size:
@@ -143,15 +157,15 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
 
     # Make into batches
     for batch_start in xrange(0, len(examples), batch_size):
-        uuids_batch, context_tokens_batch, context_ids_batch, qn_ids_batch, feats_batch, char_ids_batch = zip(*examples[batch_start:batch_start + batch_size])
+        uuids_batch, context_tokens_batch, context_ids_batch, qn_ids_batch, feats_batch, char_ids_batch, commonQ_mask_batch, commonQ_emb_indices_batch, charQ_ids_batch = zip(*examples[batch_start:batch_start + batch_size])
 
-        batches.append((uuids_batch, context_tokens_batch, context_ids_batch, qn_ids_batch, feats_batch, char_ids_batch))
+        batches.append((uuids_batch, context_tokens_batch, context_ids_batch, qn_ids_batch, feats_batch, char_ids_batch, commonQ_mask_batch, commonQ_emb_indices_batch, charQ_ids_batch))
 
     return
 
 
 
-def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data, batch_size, context_len, question_len, num_feats, word_len):
+def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data, batch_size, context_len, question_len, num_feats, word_len, mcids_dict):
     """
     This is similar to get_batch_generator in data_batcher.py, but with some
     differences (see explanation in refill_batches).
@@ -170,12 +184,12 @@ def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data
 
     while True:
         if len(batches) == 0:
-            refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_data, batch_size, context_len, question_len, word_len)
+            refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_data, batch_size, context_len, question_len, word_len, mcids_dict)
         if len(batches) == 0:
             break
 
         # Get next batch. These are all lists length batch_size
-        (uuids, context_tokens, context_ids, qn_ids, feats) = batches.pop(0)
+        (uuids, context_tokens, context_ids, qn_ids, feats, char_ids, commonQ_mask, commonQ_emb_indices) = batches.pop(0)
 
         # Pad context_ids and qn_ids
         qn_ids = padded(qn_ids, question_len) # pad questions to length question_len
@@ -197,8 +211,18 @@ def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data
         char_ids = np.array(char_ids)
         char_mask = (char_ids != PAD_ID).astype(np.int32)
 
+        charQ_ids = padded2(charQ_ids, word_len, question_len, islist=True)
+        charQ_ids = np.array(charQ_ids)
+        charQ_mask = (charQ_ids != PAD_ID).astype(np.int32)
+
+        # Pad commonQ_mask and commonQ_emb_indices / convert to np.array
+        commonQ_mask = np.array(paddedBool(commonQ_mask, question_len))
+        commonQ_emb_indices = np.array(padded(commonQ_emb_indices, question_len))
+
         # Make into a Batch object
-        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens=None, ans_span=None, ans_tokens=None, feats=feats, char_ids=char_ids, char_mask=char_mask, uuids=uuids)
+        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens=None, ans_span=None, ans_tokens=None, \
+            feats=feats, char_ids=char_ids, char_mask=char_mask, commonQ_mask=commonQ_mask, commonQ_emb_indices=commonQ_emb_indices, \
+            charQ_ids=charQ_ids, charQ_mask=charQ_mask, uuids=uuids)
 
         yield batch
 
@@ -309,7 +333,7 @@ def generate_answers(session, model, word2id, qn_uuid_data, context_token_data, 
 
     print "Generating answers..."
 
-    for batch in get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data, model.FLAGS.batch_size, model.FLAGS.context_len, model.FLAGS.question_len, model.FLAGS.num_feats):
+    for batch in get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data, model.FLAGS.batch_size, model.FLAGS.context_len, model.FLAGS.question_len, model.FLAGS.num_feats, model.FLAGS.word_len, model.mcids_dict):
 
         # Get the predicted spans
         pred_start_batch, pred_end_batch = model.get_start_end_pos(session, batch, model.FLAGS.max_span)
