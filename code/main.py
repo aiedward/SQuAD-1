@@ -140,7 +140,6 @@ def main(unused_argv):
 
     # load IDs of 1000 most question words
     mcids = pickle.load( open( "mcids.p", "rb" ) )
-    mcids_dict = dict(zip(mcids,range(len(mcids))))
 
     # Get filepaths to train/dev datafiles for tokenized queries, contexts and answers
     train_context_path = os.path.join(FLAGS.data_dir, "train.context")
@@ -151,7 +150,7 @@ def main(unused_argv):
     dev_ans_path       = os.path.join(FLAGS.data_dir, "dev.span")
 
     # Initialize model
-    qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix, mcids_dict)
+    qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix, mcids)
 
     # Some GPU settings
     config=tf.ConfigProto()

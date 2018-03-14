@@ -19,7 +19,7 @@ cnn (same architecture as BiDAF) (trained, "cnn")
 *** NOTE: ALIGNED QUESTION EMBEDDINGS SHOULD HAVE BEEN USING A SINGLE DENSE LAYER WITH RELU ***
 allow 1000 most commonQ words to be re-learned
 *** NOTE: WAS NOT USING CHARCNN FOR QUERY ***
-now using charQ cnn + dense layer in aligned question embedding, revert back to adam
+now using charQ cnn + dense layer in aligned question embedding
 
 
 

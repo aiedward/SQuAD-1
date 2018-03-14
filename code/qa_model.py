@@ -38,7 +38,7 @@ logging.basicConfig(level=logging.INFO)
 class QAModel(object):
     """Top-level Question Answering module"""
 
-    def __init__(self, FLAGS, id2word, word2id, emb_matrix, mcids_dict):
+    def __init__(self, FLAGS, id2word, word2id, emb_matrix, mcids):
         """
         Initializes the QA model.
 
@@ -53,7 +53,8 @@ class QAModel(object):
         self.FLAGS = FLAGS
         self.id2word = id2word
         self.word2id = word2id
-        self.mcids_dict = mcids_dict
+        self.mcids = mcids
+        self.mcids_dict =  dict(zip(mcids,range(len(mcids))))
 
         # Add all parts of the graph
         with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
@@ -154,7 +155,7 @@ class QAModel(object):
 
             ############### use learnable embeddings for common Q words #########################
             # qn_ids: (batch_size, question_len)
-            commonQ_emb_matrix = tf.get_variable("commonQ_matrix", shape=(1000,self.FLAGS.embedding_size), initializer=tf.contrib.layers.xavier_initializer()) # shape (43, embedding_size)
+            commonQ_emb_matrix = tf.get_variable("commonQ_matrix", initializer=tf.gather(embedding_matrix,self.mcids)) # shape (1000, embedding_size)
             commonQ_embs = embedding_ops.embedding_lookup(commonQ_emb_matrix, self.commonQ_emb_indices) # shape (batch_size, question_len, embedding_size)
             
             commonQ_mask = tf.reshape(self.commonQ_mask, [-1,])                     # (batch_size * question_len, )
