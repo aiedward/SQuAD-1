@@ -1,5 +1,6 @@
 data/
 experiments/
 .env/
-papers/
+paper/
+articles/
 predictions.json
