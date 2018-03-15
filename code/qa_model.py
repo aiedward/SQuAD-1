@@ -63,7 +63,7 @@ class QAModel(object):
             self.add_embedding_layer(emb_matrix)
             self.add_aligned_question_embs() ###
             self.add_features() ###
-            #self.add_dummy_features() ###
+            self.add_dummy_features() ###
             self.build_graph()
             self.add_loss()
 
@@ -205,10 +205,9 @@ class QAModel(object):
         """     
         with vs.variable_scope("dummy_features"):
             actual_batch_size = tf.shape(self.feats)[0] # may not be batch_size if at end of file, for example
-            additional_features = self.FLAGS.embedding_size + self.FLAGS.num_feats + self.FLAGS.num_filters
-            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size, self.FLAGS.question_len, additional_features],tf.float32)), axis=2) # shape (batch_size, question_len, embedding_size+num_feats)
-            print('Added dummy features (assume aligned_question_embs are NOT used!')
-            print('You''re using a shared encoder, right?')
+            additional_features = self.FLAGS.embedding_size + self.FLAGS.num_feats
+            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size, self.FLAGS.question_len, additional_features],tf.float32)), axis=2) # shape (batch_size, question_len, 2*embedding_size+num_filters+num_feats)
+            print('Added dummy features (You''re using a shared encoder, right?)')
 
     def build_graph(self):
         """Builds the main part of the graph for the model, starting from the input embeddings to the final distributions for the answer span.
@@ -224,12 +223,12 @@ class QAModel(object):
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
         # between the context and the question.
-        encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers_embed, scope="RNNEncoderC")
-        encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers_embed, scope="RNNEncoderQ")
-        #encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers_embed, scope="RNNEncoder")
+        # encoderC = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers_embed, scope="RNNEncoderC")
+        # encoderQ = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers_embed, scope="RNNEncoderQ")
+        encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, self.FLAGS.num_rnn_layers_embed, scope="RNNEncoder")
 
-        context_hiddens  = encoderC.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
-        question_hiddens = encoderQ.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
+        context_hiddens  = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
+        question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
         # ################### BASIC ATTENTION ###################
         # # Use context hidden states to attend to question hidden states
