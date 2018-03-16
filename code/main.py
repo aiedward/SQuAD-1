@@ -63,7 +63,7 @@ tf.app.flags.DEFINE_integer("num_filters", 100, "The number of CNN filters")
 tf.app.flags.DEFINE_integer("num_rnn_layers_embed", 1, "Number of RNN layers to stack in bidirectional RNNEncoder (word embed layer)")
 tf.app.flags.DEFINE_integer("num_rnn_layers_model", 2, "Number of RNN layers to stack in bidirectional RNNEncoder (model layer)")
 
-tf.app.flags.DEFINE_integer("num_feats", 4, "Number of context-word features added to embeddings")
+tf.app.flags.DEFINE_integer("num_feats", 2, "Number of context-word features added to embeddings")
 tf.app.flags.DEFINE_integer("max_span", 15, "Maximum span of answer allowed when maximizing p_start*p_end")
 ##########################################################################################
 
