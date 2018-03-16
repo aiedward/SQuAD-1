@@ -24,7 +24,7 @@ cnnQ
 cnnQ_rnn2
 *** NOTE: not using the learned commonQ words for context... ***
 now also using common embeddings for context, fixed EM be ==1, shared encoder
-
+sharedE -- 20K through realized my start dense was non-linear (relu)
 
 
 "feat model"

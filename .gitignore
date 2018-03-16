@@ -1,5 +1,6 @@
 data/
 experiments/
+old_experiments/
 .env/
 paper/
 articles/
