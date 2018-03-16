@@ -61,7 +61,7 @@ class QAModel(object):
             self.add_placeholders()
             self.get_char_features() ###
             self.add_embedding_layer(emb_matrix)
-            self.add_aligned_question_embs() ###
+            self.get_aligned_question_embs() ###
             self.add_features() ###
             self.add_dummy_features() ###
             self.build_graph()
@@ -113,6 +113,9 @@ class QAModel(object):
 
         self.commonQ_mask        = tf.placeholder(tf.bool,  shape=[None, self.FLAGS.question_len])
         self.commonQ_emb_indices = tf.placeholder(tf.int32, shape=[None, self.FLAGS.question_len])
+
+        self.commonC_mask        = tf.placeholder(tf.bool,  shape=[None, self.FLAGS.context_len])
+        self.commonC_emb_indices = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len])
         ########################################################################
 
     def get_char_features(self):
@@ -150,26 +153,29 @@ class QAModel(object):
 
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids
-            self.context_embs = embedding_ops.embedding_lookup(embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
-            qn_embs = embedding_ops.embedding_lookup(embedding_matrix, self.qn_ids) # shape (batch_size, question_len, embedding_size) -- NOT DECLARING AS SELF YET
+            context_embs = embedding_ops.embedding_lookup(embedding_matrix, self.context_ids) # shape (batch_size, context_len, embedding_size)
+            qn_embs      = embedding_ops.embedding_lookup(embedding_matrix, self.qn_ids)      # shape (batch_size, question_len, embedding_size)
 
             ############### use learnable embeddings for common Q words #########################
             # qn_ids: (batch_size, question_len)
-            commonQ_emb_matrix = tf.get_variable("commonQ_matrix", initializer=tf.gather(embedding_matrix,self.mcids)) # shape (1000, embedding_size)
-            commonQ_embs = embedding_ops.embedding_lookup(commonQ_emb_matrix, self.commonQ_emb_indices) # shape (batch_size, question_len, embedding_size)
+            common_emb_matrix = tf.get_variable("common_matrix", initializer=tf.gather(embedding_matrix,self.mcids)) # shape (1000, embedding_size)
             
-            commonQ_mask = tf.reshape(self.commonQ_mask, [-1,])                     # (batch_size * question_len, )
-            qn_embs      = tf.reshape(qn_embs,      [-1,self.FLAGS.embedding_size]) # (batch_size * question_len, embedding_size)
-            commonQ_embs = tf.reshape(commonQ_embs, [-1,self.FLAGS.embedding_size]) # (batch_size * question_len, embedding_size)
-
-            output = tf.where(commonQ_mask,commonQ_embs,qn_embs)                               # (batch_size * question_len, embedding_size)
-            output = tf.reshape(output,[-1,self.FLAGS.question_len,self.FLAGS.embedding_size]) # (batch_size, question_len, embedding_size)
-            print('Using variable embeddings for 1000 most common!')
-
-            self.qn_embs = output
+            commonQ_embs = embedding_ops.embedding_lookup(common_emb_matrix, self.commonQ_emb_indices)  # (batch_size, question_len, embedding_size)
+            commonQ_mask = tf.reshape(self.commonQ_mask, [-1,])                                         # (batch_size * question_len, )
+            qn_embs      = tf.reshape(qn_embs,      [-1,self.FLAGS.embedding_size])                     # (batch_size * question_len, embedding_size)
+            commonQ_embs = tf.reshape(commonQ_embs, [-1,self.FLAGS.embedding_size])                     # (batch_size * question_len, embedding_size)
+            outputQ      = tf.where(commonQ_mask,commonQ_embs,qn_embs)                                  # (batch_size * question_len, embedding_size)
+            self.qn_embs = tf.reshape(outputQ,[-1,self.FLAGS.question_len,self.FLAGS.embedding_size])   # (batch_size, question_len, embedding_size)
+            
+            commonC_embs = embedding_ops.embedding_lookup(common_emb_matrix, self.commonC_emb_indices)  # (batch_size, context_len, embedding_size)
+            commonC_mask = tf.reshape(self.commonC_mask, [-1,])                                         # (batch_size * context_len, )
+            context_embs = tf.reshape(context_embs,      [-1,self.FLAGS.embedding_size])                # (batch_size * context_len, embedding_size)
+            commonC_embs = tf.reshape(commonC_embs, [-1,self.FLAGS.embedding_size])                     # (batch_size * context_len, embedding_size)
+            outputC      = tf.where(commonC_mask,commonC_embs,context_embs)                             # (batch_size * context_len, embedding_size)
+            self.context_embs = tf.reshape(outputC,[-1,self.FLAGS.context_len,self.FLAGS.embedding_size])   # (batch_size, context_len, embedding_size)
             #####################################################################################
 
-    def add_aligned_question_embs(self):
+    def get_aligned_question_embs(self):
         """
         Adds aligned question embeddings to context embeddings, and another dummy row to question embeddings. See DrQA fro details.
         """        
@@ -180,11 +186,7 @@ class QAModel(object):
             # attn_dist    : (batch_size, context_len, question_len)
             # self.qn_embs : (batch_size, context_len, embedding_size)
             a = tf.expand_dims(attn_dist,3) * tf.expand_dims(self.qn_embs,1) # (b, N, M, d) = (b,N,M,1)*(b,1,M,d)
-            a = tf.reduce_sum(a, axis=2) # (b,N,d)
-
-            # concatenate aligned question embedding to cotext embeddings
-            self.context_embs = tf.concat((self.context_embs, a), axis=2) # shape (batch_size, context_len, 2*embedding_size)
-            print('Added aligned question_embs!')
+            self.alignedQ_embs = tf.reduce_sum(a, axis=2) # (b,N,d)
 
     def add_features(self):
         """
@@ -192,12 +194,15 @@ class QAModel(object):
         Must be called after add_embedding_layer and get_char_features
         """     
         with vs.variable_scope("features"):
-            self.context_embs = tf.concat((self.context_embs, self.feats), axis=2) # shape (batch_size, context_len, (2*embedding_size)+num_feats)
-            print('Added manual features!')
-            self.context_embs = tf.concat((self.context_embs, self.char_hidden), axis=2) # shape (batch_size, context_len, (2*embedding_size)+num_feats+num_filters)
+            self.context_embs = tf.concat((self.context_embs, self.char_hidden),   axis=2) # shape (batch_size, context_len,  embedding_size + num_filters)
             print('Added CNN features (to context)!')
-            self.qn_embs = tf.concat((self.qn_embs, self.charQ_hidden), axis=2) # shape (batch_size, question_len, embedding_size+num_filters)
+            self.qn_embs      = tf.concat((self.qn_embs,      self.charQ_hidden),  axis=2) # shape (batch_size, question_len, embedding_size + num_filters)
             print('Added CNN features (to question)!')
+            self.context_embs = tf.concat((self.context_embs, self.feats),         axis=2) # shape (batch_size, context_len,  embedding_size + num_filters + num_feats)
+            print('Added manual features!')
+            self.context_embs = tf.concat((self.context_embs, self.alignedQ_embs), axis=2) # shape (batch_size, context_len,  embedding_size + num_filters + num_feats + embedding_size)
+            print('Added aligned question_embs!')
+
 
     def add_dummy_features(self):
         """
@@ -205,8 +210,8 @@ class QAModel(object):
         """     
         with vs.variable_scope("dummy_features"):
             actual_batch_size = tf.shape(self.feats)[0] # may not be batch_size if at end of file, for example
-            additional_features = self.FLAGS.embedding_size + self.FLAGS.num_feats
-            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size, self.FLAGS.question_len, additional_features],tf.float32)), axis=2) # shape (batch_size, question_len, 2*embedding_size+num_filters+num_feats)
+            additional_features = self.FLAGS.num_feats + self.FLAGS.embedding_size
+            self.qn_embs = tf.concat((self.qn_embs, tf.zeros([actual_batch_size, self.FLAGS.question_len, additional_features],tf.float32)), axis=2) # shape (batch_size, question_len, embedding_size + num_filters + num_feats + embedding_size)
             print('Added dummy features (You''re using a shared encoder, right?)')
 
     def build_graph(self):
@@ -349,6 +354,8 @@ class QAModel(object):
         input_feed[self.char_mask] = batch.char_mask
         input_feed[self.commonQ_mask] = batch.commonQ_mask
         input_feed[self.commonQ_emb_indices] = batch.commonQ_emb_indices
+        input_feed[self.commonC_mask] = batch.commonC_mask
+        input_feed[self.commonC_emb_indices] = batch.commonC_emb_indices
         input_feed[self.charQ_ids] = batch.charQ_ids
         input_feed[self.charQ_mask] = batch.charQ_mask
 
@@ -387,6 +394,8 @@ class QAModel(object):
         input_feed[self.char_mask] = batch.char_mask
         input_feed[self.commonQ_mask] = batch.commonQ_mask
         input_feed[self.commonQ_emb_indices] = batch.commonQ_emb_indices
+        input_feed[self.commonC_mask] = batch.commonC_mask
+        input_feed[self.commonC_emb_indices] = batch.commonC_emb_indices
         input_feed[self.charQ_ids] = batch.charQ_ids
         input_feed[self.charQ_mask] = batch.charQ_mask
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
@@ -419,6 +428,8 @@ class QAModel(object):
         input_feed[self.char_mask] = batch.char_mask
         input_feed[self.commonQ_mask] = batch.commonQ_mask
         input_feed[self.commonQ_emb_indices] = batch.commonQ_emb_indices
+        input_feed[self.commonC_mask] = batch.commonC_mask
+        input_feed[self.commonC_emb_indices] = batch.commonC_emb_indices
         input_feed[self.charQ_ids] = batch.charQ_ids
         input_feed[self.charQ_mask] = batch.charQ_mask
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout

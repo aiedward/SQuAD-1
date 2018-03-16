@@ -20,7 +20,10 @@ cnn (same architecture as BiDAF) (trained, "cnn")
 allow 1000 most commonQ words to be re-learned
 *** NOTE: WAS NOT USING CHARCNN FOR QUERY ***
 now using charQ cnn + dense layer in aligned question embedding
-
+cnnQ
+cnnQ_rnn2
+*** NOTE: not using the learned commonQ words for context... ***
+now also using common embeddings for context, fixed EM be ==1, shared encoder
 
 
 

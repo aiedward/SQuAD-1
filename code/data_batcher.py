@@ -34,7 +34,7 @@ from nltk.corpus import wordnet
 class Batch(object):
     """A class to hold the information needed for a training batch"""
 
-    def __init__(self, context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats, char_ids, char_mask, commonQ_mask, commonQ_emb_indices, charQ_ids, charQ_mask, uuids=None):
+    def __init__(self, context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats, char_ids, char_mask, commonQ_mask, commonQ_emb_indices, charQ_ids, charQ_mask, commonC_mask, commonC_emb_indices, uuids=None):
         """
         Inputs:
           {context/qn}_ids: Numpy arrays.
@@ -71,6 +71,9 @@ class Batch(object):
 
         self.commonQ_mask = commonQ_mask
         self.commonQ_emb_indices = commonQ_emb_indices
+
+        self.commonC_mask = commonC_mask
+        self.commonC_emb_indices = commonC_emb_indices
 
 def get_wordnet_pos(treebank_tag):
 
@@ -191,6 +194,9 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
         ########## GET COMMONQ EMBEDDING INDICES AND MASK ############
         commonQ_mask        = [x in mcids_keys for x in qn_ids] # (M)
         commonQ_emb_indices = [mcids_dict.get(x,0) for x in qn_ids] # (M) - note the 0 index doesnt matter due to mask
+
+        commonC_mask        = [x in mcids_keys for x in context_ids] # (N)
+        commonC_emb_indices = [mcids_dict.get(x,0) for x in context_ids] # (N) - note the 0 index doesnt matter due to mask
         ##############################################################
 
         ########## GENERATE EXACT MATCH + POS/NER FEATURES ###########
@@ -208,8 +214,8 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
         lems = [str(lemmatizer.lemmatize(tok,get_wordnet_pos(pos))) if get_wordnet_pos(pos) else str(lemmatizer.lemmatize(tok)) for tok,pos in zip(context_tokens,pos_tags)]
 
         # compare each context word to query words for three different versions
-        match_orig  = [int(any(context_token==q         for q in qn_tokens)) for context_token in context_tokens] # original form
-        match_lemma = [int(any(context_token_lem==q     for q in qn_tokens)) for context_token_lem in lems]    # lemma form
+        match_orig  = [int(sum([context_token==q     for q in qn_tokens])==1) for context_token     in context_tokens] # original form
+        match_lemma = [int(sum([context_token_lem==q for q in qn_tokens])==1) for context_token_lem in lems]    # lemma form
 
         # compute normalized term frequency
         fdist = FreqDist(context_tokens)
@@ -249,9 +255,11 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
                 context_ids = context_ids[:context_len]
                 feats = feats[:context_len]
                 char_ids = char_ids[:context_len]
+                commonC_mask = commonC_mask[:context_len]
+                commonC_emb_indices = commonC_emb_indices[:context_len]
 
         # add to examples
-        examples.append((context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens, feats, char_ids, commonQ_mask, commonQ_emb_indices, charQ_ids))
+        examples.append((context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens, feats, char_ids, commonQ_mask, commonQ_emb_indices, charQ_ids, commonC_mask, commonC_emb_indices))
 
         # stop refilling if you have 160 batches
         if len(examples) == batch_size * 160:
@@ -267,9 +275,9 @@ def refill_batches(batches, word2id, context_file, qn_file, ans_file, batch_size
     for batch_start in xrange(0, len(examples), batch_size):
 
         # Note: each of these is a list length batch_size of lists of ints (except on last iter when it might be less than batch_size)
-        context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch, feats_batch, char_ids_batch, commonQ_mask_batch, commonQ_emb_indices_batch, charQ_ids_batch = zip(*examples[batch_start:batch_start+batch_size])
+        context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch, feats_batch, char_ids_batch, commonQ_mask_batch, commonQ_emb_indices_batch, charQ_ids_batch, commonC_mask_batch, commonC_emb_indices_batch = zip(*examples[batch_start:batch_start+batch_size])
 
-        batches.append((context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch, feats_batch, char_ids_batch, commonQ_mask_batch, commonQ_emb_indices_batch, charQ_ids_batch))
+        batches.append((context_ids_batch, context_tokens_batch, qn_ids_batch, qn_tokens_batch, ans_span_batch, ans_tokens_batch, feats_batch, char_ids_batch, commonQ_mask_batch, commonQ_emb_indices_batch, charQ_ids_batch, commonC_mask_batch, commonC_emb_indices_batch))
 
     # shuffle the batches
     random.shuffle(batches)
@@ -303,7 +311,7 @@ def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, co
             break
 
         # Get next batch. These are all lists length batch_size
-        (context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens, feats, char_ids, commonQ_mask, commonQ_emb_indices, charQ_ids) = batches.pop(0)
+        (context_ids, context_tokens, qn_ids, qn_tokens, ans_span, ans_tokens, feats, char_ids, commonQ_mask, commonQ_emb_indices, charQ_ids, commonC_mask, commonC_emb_indices) = batches.pop(0)
 
         # Pad context_ids and qn_ids
         qn_ids = padded(qn_ids, question_len) # pad questions to length question_len
@@ -336,8 +344,11 @@ def get_batch_generator(word2id, context_path, qn_path, ans_path, batch_size, co
         commonQ_mask = np.array(paddedBool(commonQ_mask, question_len))
         commonQ_emb_indices = np.array(padded(commonQ_emb_indices, question_len))
 
+        commonC_mask = np.array(paddedBool(commonC_mask, context_len))
+        commonC_emb_indices = np.array(padded(commonC_emb_indices, context_len))
+
         # Make into a Batch object
-        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats, char_ids, char_mask, commonQ_mask, commonQ_emb_indices, charQ_ids, charQ_mask)
+        batch = Batch(context_ids, context_mask, context_tokens, qn_ids, qn_mask, qn_tokens, ans_span, ans_tokens, feats, char_ids, char_mask, commonQ_mask, commonQ_emb_indices, charQ_ids, charQ_mask, commonC_mask, commonC_emb_indices)
 
         yield batch
 

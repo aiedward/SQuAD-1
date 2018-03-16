@@ -48,7 +48,7 @@ tf.app.flags.DEFINE_integer("num_epochs", 0, "Number of epochs to train. 0 means
 tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.20, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_integer("batch_size", 100, "Batch size to use")
+tf.app.flags.DEFINE_integer("batch_size", 120, "Batch size to use")
 tf.app.flags.DEFINE_integer("hidden_size", 100, "Size of the hidden states")
 tf.app.flags.DEFINE_integer("context_len", 300, "The maximum context length of your model")
 tf.app.flags.DEFINE_integer("question_len", 30, "The maximum question length of your model")
@@ -141,6 +141,12 @@ def main(unused_argv):
     # load IDs of 1000 most question words
     mcids = pickle.load( open( "mcids.p", "rb" ) )
 
+    # import numpy as np
+    # from tensorflow.python.ops import variable_scope as vs
+    # emb_matrix_tf = tf.convert_to_tensor(emb_matrix, np.float32)
+    # with vs.variable_scope("dummy"):
+    #     dummy = tf.get_variable("emb_matrix", initializer=emb_matrix_tf)
+            
     # Get filepaths to train/dev datafiles for tokenized queries, contexts and answers
     train_context_path = os.path.join(FLAGS.data_dir, "train.context")
     train_qn_path      = os.path.join(FLAGS.data_dir, "train.question")
@@ -151,6 +157,7 @@ def main(unused_argv):
 
     # Initialize model
     qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix, mcids)
+
 
     # Some GPU settings
     config=tf.ConfigProto()
