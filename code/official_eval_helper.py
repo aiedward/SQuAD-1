@@ -27,7 +27,7 @@ from nltk.tokenize.moses import MosesDetokenizer
 
 from preprocessing.squad_preprocess import data_from_json, tokenize
 from vocab import UNK_ID, PAD_ID
-from data_batcher import padded, Batch, padded2, get_wordnet_pos
+from data_batcher import padded, Batch, padded2, paddedBool, get_wordnet_pos
 
 from nltk import pos_tag, ne_chunk, FreqDist
 from nltk.chunk import tree2conlltags
