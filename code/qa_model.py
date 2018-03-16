@@ -265,7 +265,7 @@ class QAModel(object):
         blended_reps = encoderMod.build_graph(blended_reps, self.context_mask) # (batch_size, context_len, hidden_size*2)
 
         # get final representation for START
-        blended_reps_start = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_start is shape (batch_size, context_len, hidden_size)
+        blended_reps_start = tf.contrib.layers.fully_connected(blended_reps, num_outputs=self.FLAGS.hidden_size, activation_fn=None) # blended_reps_start is shape (batch_size, context_len, hidden_size)
 
         # get final representation for END        
         encoderEnd   = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob, num_rnn_layers=1, scope="RNNEncoderEnd")
