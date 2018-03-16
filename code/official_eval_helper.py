@@ -86,6 +86,10 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
 
     while qn_uuid and context_tokens and qn_tokens:
 
+        # Convert context_tokens and qn_tokens to context_ids and qn_ids
+        context_ids = [word2id.get(w, UNK_ID) for w in context_tokens]
+        qn_ids = [word2id.get(w, UNK_ID) for w in qn_tokens]
+
         ########## GENERATE CHARACTER TOKENS #########################
         char_ids = [[char2id[char] if char in char_keys else UNK_ID for char in tok.lower()] for tok  in context_tokens]
         char_ids = [x[:word_len] for x in char_ids] # (N, <=word_len)
@@ -131,10 +135,6 @@ def refill_batches(batches, word2id, qn_uuid_data, context_token_data, qn_token_
         # feats = zip(*(pos_ids, match_orig, match_lemma))  # (N,3)
         feats = zip(*(pos_ids, tf, match_orig, match_lemma))  # (N,4)
         ##############################################################
-
-        # Convert context_tokens and qn_tokens to context_ids and qn_ids
-        context_ids = [word2id.get(w, UNK_ID) for w in context_tokens]
-        qn_ids = [word2id.get(w, UNK_ID) for w in qn_tokens]
 
         # Truncate context_ids and qn_ids
         # Note: truncating context_ids may truncate the correct answer, meaning that it's impossible for your model to get the correct answer on this example!
