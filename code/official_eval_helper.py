@@ -195,7 +195,7 @@ def get_batch_generator(word2id, qn_uuid_data, context_token_data, qn_token_data
             break
 
         # Get next batch. These are all lists length batch_size
-        (uuids, context_tokens, context_ids, qn_ids, feats, char_ids, commonQ_mask, commonQ_emb_indices, commonC_mask, commonC_emb_indices) = batches.pop(0)
+        (uuids, context_tokens, context_ids, qn_ids, feats, char_ids, commonQ_mask, commonQ_emb_indices, charQ_ids_batch, commonC_mask, commonC_emb_indices) = batches.pop(0)
 
         # Pad context_ids and qn_ids
         qn_ids = padded(qn_ids, question_len) # pad questions to length question_len
@@ -305,7 +305,7 @@ def get_json_data(data_filename):
 
     # Read the json file
     print "Reading data from %s..." % data_filename
-    data = data_from_json(data_filename)
+    data = data_from_json(data_filename)f
 
     # Get the tokenized contexts and questions, and unique question identifiers
     print "Preprocessing data from %s..." % data_filename
