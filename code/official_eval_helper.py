@@ -305,7 +305,7 @@ def get_json_data(data_filename):
 
     # Read the json file
     print "Reading data from %s..." % data_filename
-    data = data_from_json(data_filename)f
+    data = data_from_json(data_filename)
 
     # Get the tokenized contexts and questions, and unique question identifiers
     print "Preprocessing data from %s..." % data_filename
