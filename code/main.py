@@ -25,6 +25,7 @@ import logging
 import pickle
 
 import tensorflow as tf
+import numpy as np
 
 from qa_model import QAModel
 from vocab import get_glove
@@ -143,7 +144,6 @@ def main(unused_argv):
 
     emb_matrix_commonQ = np.array(pickle.load( open( "commonQ_GLOVE.p", "rb" ) ))
 
-    import numpy as np
     from tensorflow.python.ops import variable_scope as vs
     emb_matrix_tf = tf.convert_to_tensor(emb_matrix_commonQ, np.float32)
     with vs.variable_scope("dummy319"):
