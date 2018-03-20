@@ -21,6 +21,7 @@ import time
 import logging
 import os
 import sys
+import pickle
 
 import numpy as np
 import tensorflow as tf
@@ -183,6 +184,8 @@ class QAModel(object):
             attn_layer   = BasicAttn(self.keep_prob, self.FLAGS.embedding_size, self.FLAGS.embedding_size)
             attn_dist, _ = attn_layer.build_graph(self.qn_embs, self.qn_mask, self.context_embs, self.FLAGS.hidden_size) # havent added features to *embs yet
             
+            self.bidaf = attn_dist
+
             # attn_dist    : (batch_size, context_len, question_len)
             # self.qn_embs : (batch_size, context_len, embedding_size)
             a = tf.expand_dims(attn_dist,3) * tf.expand_dims(self.qn_embs,1) # (b, N, M, d) = (b,N,M,1)*(b,1,M,d)
@@ -252,8 +255,9 @@ class QAModel(object):
         #######################################################
         # Use context AND question hidden states to calculate bidirectional attention
         bidaf_layer  = BidirecAttn(self.keep_prob, self.FLAGS.hidden_size)
-        bidaf_output = bidaf_layer.build_graph(c=context_hiddens, c_mask=self.context_mask, q=question_hiddens, q_mask=self.qn_mask) # attn_output is shape (batch_size, context_len, hidden_size*8)
+        bidaf_output, alpha = bidaf_layer.build_graph(c=context_hiddens, c_mask=self.context_mask, q=question_hiddens, q_mask=self.qn_mask) # attn_output is shape (batch_size, context_len, hidden_size*8)
         blended_reps = bidaf_output
+        # self.bidaf = alpha
 
         # ## self-attention
         # selfattn_layer  = SelfAttn(self.keep_prob, self.FLAGS.hidden_size)
@@ -434,9 +438,9 @@ class QAModel(object):
         input_feed[self.charQ_mask] = batch.charQ_mask
         # note you don't supply keep_prob here, so it will default to 1 i.e. no dropout
 
-        output_feed = [self.probdist_start, self.probdist_end]
-        [probdist_start, probdist_end] = session.run(output_feed, input_feed)
-        return probdist_start, probdist_end
+        output_feed = [self.probdist_start, self.probdist_end, self.bidaf]
+        [probdist_start, probdist_end, bidaf_output] = session.run(output_feed, input_feed)
+        return probdist_start, probdist_end, bidaf_output
 
 
     def get_start_end_pos(self, session, batch, K):
@@ -464,7 +468,7 @@ class QAModel(object):
         # that maximizes p_start(i)*p_end(j), K=15 by default
 
         # Get start_dist and end_dist, both shape (batch_size, context_len)
-        start_dist, end_dist = self.get_prob_dists(session, batch)
+        start_dist, end_dist, bidaf_output = self.get_prob_dists(session, batch)
 
         start_dist = np.expand_dims(start_dist,2) # (b,N,1)
         end_dist   = np.expand_dims(end_dist,1)   # (b,1,N)
@@ -477,7 +481,7 @@ class QAModel(object):
         start_pos = indices[0]
         end_pos   = indices[1]
 
-        return start_pos, end_pos
+        return start_pos, end_pos, bidaf_output
 
     def get_dev_loss(self, session, dev_context_path, dev_qn_path, dev_ans_path):
         """
@@ -518,7 +522,7 @@ class QAModel(object):
         return dev_loss
 
 
-    def check_f1_em(self, session, context_path, qn_path, ans_path, dataset, num_samples=100, print_to_screen=False):
+    def check_f1_em(self, session, context_path, qn_path, ans_path, dataset, num_samples=100, print_to_screen=False, save_output=False):
         """
         Sample from the provided (train/dev) set.
         For each sample, calculate F1 and EM score.
@@ -556,7 +560,7 @@ class QAModel(object):
         # That means we're truncating, rather than discarding, examples with too-long context or questions
         for batch in get_batch_generator(self.word2id, context_path, qn_path, ans_path, self.FLAGS.batch_size, context_len=self.FLAGS.context_len, question_len=self.FLAGS.question_len, discard_long=False, num_feats=self.FLAGS.num_feats, word_len=self.FLAGS.word_len, mcids_dict=self.mcids_dict):
 
-            pred_start_pos, pred_end_pos = self.get_start_end_pos(session, batch, self.FLAGS.max_span)
+            pred_start_pos, pred_end_pos, bidaf_output = self.get_start_end_pos(session, batch, self.FLAGS.max_span)
 
             # Convert the start and end positions to lists length batch_size
             pred_start_pos = pred_start_pos.tolist() # list length batch_size
@@ -589,6 +593,9 @@ class QAModel(object):
 
             if num_samples != 0 and example_num >= num_samples:
                 break
+
+        if save_output:
+            pickle.dump(bidaf_output[:num_samples], open( "basic_alpha.p", "wb" ) )
 
         f1_total /= example_num
         em_total /= example_num
@@ -673,14 +680,14 @@ class QAModel(object):
 
 
                     # Get F1/EM on train set and log to tensorboard
-                    train_f1, train_em = self.check_f1_em(session, train_context_path, train_qn_path, train_ans_path, "train", num_samples=1000)
+                    train_f1, train_em = self.check_f1_em(session, train_context_path, train_qn_path, train_ans_path, "train", num_samples=1000, save_output=False)
                     logging.info("Epoch %d, Iter %d, Train F1 score: %f, Train EM score: %f" % (epoch, global_step, train_f1, train_em))
                     write_summary(train_f1, "train/F1", summary_writer, global_step)
                     write_summary(train_em, "train/EM", summary_writer, global_step)
 
 
                     # Get F1/EM on dev set and log to tensorboard
-                    dev_f1, dev_em = self.check_f1_em(session, dev_context_path, dev_qn_path, dev_ans_path, "dev", num_samples=0)
+                    dev_f1, dev_em = self.check_f1_em(session, dev_context_path, dev_qn_path, dev_ans_path, "dev", num_samples=0, save_output=False)
                     logging.info("Epoch %d, Iter %d, Dev F1 score: %f, Dev EM score: %f" % (epoch, global_step, dev_f1, dev_em))
                     write_summary(dev_f1, "dev/F1", summary_writer, global_step)
                     write_summary(dev_em, "dev/EM", summary_writer, global_step)

@@ -258,7 +258,7 @@ class BidirecAttn(object):
 
             # form final output
             output = tf.concat([c, a, c*a, c*cprime], axis=2) # (b, N, 8h)
-            return output
+            return output, alpha
 
 class SelfAttn(object):
     """

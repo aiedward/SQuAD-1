@@ -142,8 +142,7 @@ def main(unused_argv):
     # load IDs of 1000 most question words
     mcids = pickle.load( open( "mcids.p", "rb" ) )
 
-    emb_matrix_commonQ = np.array(pickle.load( open( "commonQ_GLOVE.p", "rb" ) ))
-
+    # emb_matrix_commonQ = np.array(pickle.load( open( "commonQ_GLOVE.p", "rb" ) ))
     # from tensorflow.python.ops import variable_scope as vs
     # emb_matrix_tf = tf.convert_to_tensor(emb_matrix_commonQ, np.float32)
     # with vs.variable_scope("dummy319"):
@@ -198,7 +197,7 @@ def main(unused_argv):
             initialize_model(sess, qa_model, bestmodel_dir, expect_exists=True)
 
             # Show examples with F1/EM scores
-            _, _ = qa_model.check_f1_em(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", num_samples=10, print_to_screen=True)
+            _, _ = qa_model.check_f1_em(sess, dev_context_path, dev_qn_path, dev_ans_path, "dev", num_samples=10, print_to_screen=True, save_output=True)
 
 
     elif FLAGS.mode == "official_eval":
