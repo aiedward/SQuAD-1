@@ -141,11 +141,13 @@ def main(unused_argv):
     # load IDs of 1000 most question words
     mcids = pickle.load( open( "mcids.p", "rb" ) )
 
-    # import numpy as np
-    # from tensorflow.python.ops import variable_scope as vs
-    # emb_matrix_tf = tf.convert_to_tensor(emb_matrix, np.float32)
-    # with vs.variable_scope("dummy"):
-    #     dummy = tf.get_variable("emb_matrix", initializer=emb_matrix_tf)
+    emb_matrix_commonQ = np.array(pickle.load( open( "commonQ_GLOVE.p", "rb" ) ))
+
+    import numpy as np
+    from tensorflow.python.ops import variable_scope as vs
+    emb_matrix_tf = tf.convert_to_tensor(emb_matrix_commonQ, np.float32)
+    with vs.variable_scope("dummy319"):
+        dummy = tf.get_variable("emb_matrix", initializer=emb_matrix_tf)
             
     # Get filepaths to train/dev datafiles for tokenized queries, contexts and answers
     train_context_path = os.path.join(FLAGS.data_dir, "train.context")
