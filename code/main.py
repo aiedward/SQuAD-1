@@ -223,6 +223,17 @@ def main(unused_argv):
                 f.write(unicode(json.dumps(answers_dict, ensure_ascii=False)))
                 print "Wrote predictions to %s" % FLAGS.json_out_path
 
+    elif FLAGS.mode == "official_eval_test":
+
+        if FLAGS.ckpt_load_dir == "":
+            raise Exception("For official_eval mode, you need to specify --ckpt_load_dir")
+
+        with tf.Session(config=config) as sess:
+
+            # Load model from ckpt_load_dir
+            initialize_model(sess, qa_model, FLAGS.ckpt_load_dir, expect_exists=True)
+            common_matrix = sess.run([v for v in tf.trainable_variables() if v.name == "QAModel/embeddings/common_matrix:0"][0])
+            pickle.dump(common_matrix, open( "common_matrix.p", "wb" ) )
 
     else:
         raise Exception("Unexpected value of FLAGS.mode: %s" % FLAGS.mode)

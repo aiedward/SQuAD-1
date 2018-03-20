@@ -25,7 +25,10 @@ cnnQ_rnn2
 *** NOTE: not using the learned commonQ words for context... ***
 now also using common embeddings for context, fixed EM be ==1, shared encoder
 sharedE -- 20K through realized my start dense was non-linear (relu)
-	@23.5, learningrate = 0.05
+	@23.5, learningrate = 0.05, then 0.01 for 2.5 days
+	K=20: {"f1": 71.03286320353247, "exact_match": 59.92431409649953}
+	K=15: {"f1": 70.99408517205993, "exact_match": 60.00946073793756} (full dev)
+	K=10: {"f1": 70.90604994051326, "exact_match": 60.0}
 
 
 "feat model"
